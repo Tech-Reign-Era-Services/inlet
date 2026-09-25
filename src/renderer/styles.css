@@ -332,6 +332,33 @@ details.skipped[open] summary .icon { transform: rotate(180deg); }
 .release ul { margin: 8px 0 0; padding-left: 20px; color: var(--text-2); }
 .release li + li { margin-top: 4px; }
 
+/* ---------- find ---------- */
+.find-box { display: flex; align-items: center; gap: 12px; padding: 0 18px; height: 56px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border-strong); box-shadow: var(--shadow); color: var(--text-3); }
+.find-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft), var(--shadow); color: var(--accent); }
+.find-input { flex: 1; border: 0; background: none; outline: none; font-size: 17px; color: var(--text); min-width: 0; user-select: text; }
+.find-input::placeholder { color: var(--text-3); }
+.content > div > .find-options { margin-top: 10px; }
+.find-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.find-toggle input { accent-color: var(--accent); margin: 0; }
+#find-results > * + * { margin-top: 12px; }
+.find-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.find-chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 4px 0 10px; border-radius: 13px; background: var(--accent-soft); color: var(--accent); font-size: 12.5px; font-weight: 550; }
+.find-chip button { border: 0; background: none; color: inherit; opacity: 0.6; width: 18px; height: 18px; border-radius: 9px; display: grid; place-items: center; padding: 0; cursor: default; }
+.find-chip button:hover { opacity: 1; background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.find-note { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--text-2); }
+.find-note .icon { color: var(--text-3); margin-top: 2px; }
+.find-status { display: flex; align-items: center; gap: 10px; color: var(--text-2); padding: 24px 4px; }
+.find-count { font-size: 12px; }
+.find-list { overflow: hidden; }
+.find-row { display: grid; grid-template-columns: 28px 40px minmax(0, 1fr) minmax(160px, 34%) 64px; align-items: center; gap: 10px; padding: 0 16px; min-height: 58px; border-bottom: 1px solid var(--border); outline: none; }
+.find-row:last-child { border-bottom: 0; }
+.find-row:hover { background: var(--surface-hover); }
+.find-row:focus-visible { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.find-row.on { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.find-why { font-size: 12px; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.find-row:hover .find-acts, .find-row:focus-visible .find-acts { opacity: 1; }
+.find-acts { display: flex; justify-content: flex-end; }
+
 /* ---------- rules ---------- */
 .rule-list { display: grid; gap: 10px; }
 .rule {

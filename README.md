@@ -40,6 +40,7 @@ When Inlet first reads your Downloads folder, macOS asks for permission. Click *
 
 ![Organize preview](docs/screenshots/organize.png)
 
+- **Find files by describing them.** Press ⌘F and type what you remember: "pdfs from github last week", "the contract I signed in July", "big videos I haven't opened in a month". Inlet shows what it understood as chips you can remove, says why each file matched, and lets you gather the results into a folder (undoable), preview them, or drag them out.
 - **Manual or Auto.** In Manual mode (the default), you see a preview of every file, where it will go and why, before anything moves. In Auto mode, each new download is sorted once it has *finished* downloading. Half-finished `.crdownload`, `.part` and `.download` files are never touched.
 - **Scheduled tidy.** A daily sweep at a time you choose.
 - **More than Downloads.** Watch Desktop (where screenshots land) or any other folder. Each folder can have its own mode.
@@ -49,6 +50,8 @@ When Inlet first reads your Downloads folder, macOS asks for permission. Click *
 - **Cleanup.** Find files you haven't opened in months, and duplicate files. Archive them, or remove them. Removed files wait 30 days in a hidden holding folder so you can undo, then go to the Trash.
 - **Your rules on every Mac.** Export and import your rules, or keep them in sync through a folder like iCloud Drive.
 - **Folders are left alone.** Project folders and anything that isn't a loose file stay where they are, unless you choose otherwise.
+
+![Find](docs/screenshots/find.png)
 
 ![Rules](docs/screenshots/rules.png)
 
@@ -98,6 +101,7 @@ Inlet is Electron with a plain HTML/CSS/JS interface (no framework) and no runti
 | `src/main/folders.js` | Watched folders: validation, per-folder mode and settings |
 | `src/main/spotlight.js` | Finder kind and file text, via macOS Spotlight's own tools |
 | `src/main/suggest.js`, `finder.js` | Learning from your corrections, in the app and in Finder |
+| `src/main/find/` | Find: `parse.js` turns a sentence into a query, and `search.js` runs it across Spotlight, the download history and Inlet's activity |
 | `src/main/portable.js` | Rules file format for export/import and sync |
 | `src/main/main.js` | Window, menu bar, notifications, and the bridge to the interface |
 | `src/renderer/` | The interface |

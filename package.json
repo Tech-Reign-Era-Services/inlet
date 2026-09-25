@@ -1,7 +1,7 @@
 {
   "name": "inlet",
   "productName": "Inlet",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Keeps your Downloads folder clean by sorting files into category folders — automatically or on demand.",
   "main": "src/main/main.js",
   "author": "Tech Reign Era Services",

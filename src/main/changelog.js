@@ -3,6 +3,17 @@
 // Shown in "What's new" after an update (newest first). Keep entries short and user-facing.
 module.exports = [
   {
+    version: '1.7.0',
+    title: 'Find files by describing them',
+    items: [
+      'New Find page (⌘F). Type what you remember, like “pdfs from github last week” or “big videos I haven’t opened in a month”.',
+      'Inlet shows what it understood as chips. Remove any of them to widen the search.',
+      'Every result says why it matched, and where the file came from.',
+      'Select results to gather them into a folder (undoable), copy their paths, or show them in Finder. Space previews a file, and you can drag files out.',
+      'Code projects are left out unless you ask, so searches stay fast.',
+    ],
+  },
+  {
     version: '1.6.0',
     title: 'Inlet remembers where files came from',
     items: [
