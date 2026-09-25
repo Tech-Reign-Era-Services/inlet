@@ -61,7 +61,7 @@ async function collectFiles(settings) {
       } else if (e.isFile()) {
         try {
           const st = await fsp.lstat(p);
-          out.push({ name: e.name, path: p, size: st.size, mtimeMs: st.mtimeMs, addedMs: st.birthtimeMs || st.mtimeMs, ino: st.ino });
+          out.push({ name: e.name, path: p, size: st.size, mtimeMs: st.mtimeMs, addedMs: st.birthtimeMs || st.mtimeMs, ino: st.ino, dev: st.dev });
         } catch { /* vanished */ }
       }
     }

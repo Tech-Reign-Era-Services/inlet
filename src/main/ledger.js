@@ -5,7 +5,8 @@
 // macOS forgets a lot: "where from" is lost when a file is unzipped, AirDropped or saved by
 // another app, and the system download log no longer keeps URLs. So Inlet writes down what it
 // can see the moment a file lands, and keeps it:
-//   - files are keyed by inode + size, which survive renames and moves on the same disk
+//   - files are keyed by inode + size, which survive renames and moves on the same disk. Inode numbers are
+//     only unique per disk, so each record also keeps its device id (dev) to tell same-numbered files apart
 //   - files unzipped from an archive share its quarantine id, so they inherit its source
 // Stored as JSON Lines (one full record per line, last one wins) so writes are cheap appends.
 // Stays on this Mac: never exported with rules or synced.
@@ -21,7 +22,7 @@ class Ledger {
   constructor(dir) {
     this.file = path.join(dir, FILE);
     this.entries = new Map(); // id → entry
-    this.byKey = new Map(); // `${ino}:${size}` → id
+    this.byKey = new Map(); // `${ino}:${size}` → Set of ids (several when disks reuse an inode number)
     this.byQid = new Map(); // quarantine id → Set of ids
     this.lines = 0;
     this.load();
@@ -47,23 +48,28 @@ class Ledger {
 
   index(e) {
     const old = this.entries.get(e.id);
-    if (old) {
-      this.byKey.delete(Ledger.key(old.ino, old.size));
-      if (old.qid) this.byQid.get(old.qid)?.delete(old.id);
-    }
+    if (old) this.unindex(old);
     this.entries.set(e.id, e);
-    this.byKey.set(Ledger.key(e.ino, e.size), e.id);
+    const k = Ledger.key(e.ino, e.size);
+    if (!this.byKey.has(k)) this.byKey.set(k, new Set());
+    this.byKey.get(k).add(e.id);
     if (e.qid) {
       if (!this.byQid.has(e.qid)) this.byQid.set(e.qid, new Set());
       this.byQid.get(e.qid).add(e.id);
     }
   }
 
+  unindex(e) {
+    const k = Ledger.key(e.ino, e.size);
+    const ids = this.byKey.get(k);
+    if (ids) { ids.delete(e.id); if (!ids.size) this.byKey.delete(k); }
+    if (e.qid) this.byQid.get(e.qid)?.delete(e.id);
+  }
+
   drop(id) {
     const e = this.entries.get(id);
     if (!e) return;
-    this.byKey.delete(Ledger.key(e.ino, e.size));
-    if (e.qid) this.byQid.get(e.qid)?.delete(id);
+    this.unindex(e);
     this.entries.delete(id);
   }
 
@@ -86,12 +92,23 @@ class Ledger {
     } catch { /* try again next time */ }
   }
 
-  get(ino, size) {
-    const id = this.byKey.get(Ledger.key(ino, size));
-    return id ? this.entries.get(id) : null;
+  /**
+   * The record for a file. With `dev`, only a record from that disk matches, or one written before records
+   * kept a device id. Without `dev` (callers that don't know it), any record with that inode and size.
+   */
+  get(ino, size, dev) {
+    const ids = this.byKey.get(Ledger.key(ino, size));
+    if (!ids) return null;
+    let legacy = null;
+    for (const id of ids) {
+      const e = this.entries.get(id);
+      if (dev == null || e.dev === dev) return e;
+      if (e.dev == null && !legacy) legacy = e;
+    }
+    return legacy;
   }
 
-  has(file) { return !!(file.ino && this.byKey.has(Ledger.key(file.ino, file.size))); }
+  has(file) { return !!(file.ino && this.get(file.ino, file.size, file.dev)); }
 
   /** The archive-or-sibling in the same quarantine family that knows a source, if any. */
   familySource(qid, exceptId) {
@@ -104,21 +121,23 @@ class Ledger {
 
   /**
    * Remember a file and what macOS knows about its origin.
-   * file: { path, name, ino, size, isDir, addedMs }   prov: result of provenance.readMany (or null)
-   * Returns the entry. Existing entries only get their path/name refreshed (the first sighting wins).
+   * file: { path, name, ino, dev, size, isDir, addedMs }   prov: result of provenance.readMany (or null)
+   * Returns the entry. Existing entries only get their path/name (and a missing dev) refreshed: the first sighting wins.
    */
   record(file, prov, now = Date.now()) {
     if (!file.ino) return null;
-    const existing = this.get(file.ino, file.size);
+    const existing = this.get(file.ino, file.size, file.dev);
     if (existing) {
-      if (existing.path !== file.path) this.write({ ...existing, path: file.path, name: path.basename(file.path), seenAt: now });
-      return this.get(file.ino, file.size);
+      const dev = existing.dev ?? file.dev;
+      if (existing.path !== file.path || existing.dev !== dev) this.write({ ...existing, dev, path: file.path, name: path.basename(file.path), seenAt: now });
+      return this.entries.get(existing.id);
     }
     const e = {
       id: crypto.randomUUID(),
       path: file.path,
       name: file.name || path.basename(file.path),
       ino: file.ino,
+      ...(file.dev != null && { dev: file.dev }),
       size: file.size,
       isDir: !!file.isDir,
       urls: prov?.urls || [],
@@ -145,16 +164,19 @@ class Ledger {
         }
       }
     }
-    return this.get(file.ino, file.size);
+    return this.entries.get(e.id);
   }
 
   /**
    * Inlet moved or renamed a file: keep the path current. `newIno` is the inode at the new path, which
-   * differs from the old one when the move crossed disks (a copy, then delete).
+   * differs from the old one when the move crossed disks (a copy, then delete). `dev`/`newDev` are the device
+   * ids before and after, when known.
    */
-  moved(ino, size, newPath, newIno = ino) {
-    const e = this.get(ino, size);
-    if (e && (e.path !== newPath || e.ino !== newIno)) this.write({ ...e, ino: newIno, path: newPath, name: path.basename(newPath), seenAt: Date.now() });
+  moved(ino, size, newPath, newIno = ino, { dev, newDev } = {}) {
+    const e = this.get(ino, size, dev);
+    if (!e) return;
+    const d = newDev ?? e.dev;
+    if (e.path !== newPath || e.ino !== newIno || e.dev !== d) this.write({ ...e, ino: newIno, dev: d, path: newPath, name: path.basename(newPath), seenAt: Date.now() });
   }
 
   /**
@@ -190,7 +212,7 @@ class Ledger {
 
   /** A readable copy for export. */
   toJSON() {
-    return [...this.entries.values()].map(({ id, ino, ...rest }) => rest);
+    return [...this.entries.values()].map(({ id, ino, dev, ...rest }) => rest);
   }
 }
 

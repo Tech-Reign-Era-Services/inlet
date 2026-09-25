@@ -134,6 +134,29 @@ test('moved() follows a move across disks, where the file gets a new inode', () 
   assert.equal(reloaded.stats().files, 1);
 });
 
+test('files on different disks with the same inode number get separate records', () => {
+  const data = tmp('inlet-ledger-dev-');
+  const ledger = new Ledger(data);
+  // Folders are stored with size 0, so a folder on an external disk can share inode AND size with one on the startup disk.
+  ledger.record({ path: '/Users/me/Downloads/repo', ino: 42, dev: 1, size: 0, isDir: true }, { urls: ['https://github.com/acme/repo'], host: 'github.com' });
+  ledger.record({ path: '/Volumes/Ext/Downloads/photos', ino: 42, dev: 7, size: 0, isDir: true }, { urls: [], host: '' });
+  assert.equal(ledger.stats().files, 2);
+  assert.equal(ledger.get(42, 0, 1).host, 'github.com');
+  assert.equal(ledger.get(42, 0, 7).host, ''); // doesn't inherit the other disk's website
+  assert.equal(ledger.get(42, 0, 7).path, '/Volumes/Ext/Downloads/photos');
+  ledger.moved(42, 0, '/Volumes/Ext/Downloads/Folders/photos', 42, { dev: 7 });
+  const reloaded = new Ledger(data);
+  assert.equal(reloaded.get(42, 0, 1).path, '/Users/me/Downloads/repo'); // untouched
+  assert.equal(reloaded.get(42, 0, 7).path, '/Volumes/Ext/Downloads/Folders/photos');
+
+  // Records without a device id (written before it was kept) still match, and pick it up when next seen.
+  ledger.record({ path: '/x/old.pdf', ino: 5, size: 9 }, { urls: ['https://a.com'], host: 'a.com' });
+  assert.equal(ledger.get(5, 9, 1).host, 'a.com');
+  assert.equal(ledger.record({ path: '/x/old.pdf', ino: 5, size: 9, dev: 1 }, null).dev, 1);
+  assert.equal(ledger.stats().files, 3);
+  assert.ok(!('dev' in ledger.toJSON()[0])); // internal, not exported
+});
+
 test('website rules use a remembered source when macOS has lost it', async () => {
   const dir = tmp('inlet-ledger-rules-');
   const f = path.join(dir, 'report.pdf');

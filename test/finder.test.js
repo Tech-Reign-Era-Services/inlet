@@ -31,8 +31,9 @@ test('a file dragged into another Inlet folder becomes a correction', async () =
   fs.mkdirSync(path.join(dir, 'Design', 'Models'), { recursive: true });
   for (const n of ['part-a.stl', 'part-b.stl']) fs.renameSync(path.join(dir, 'Other', n), path.join(dir, 'Design', 'Models', n));
 
-  const { corrections, changed } = await finder.detectRelocations(settings, batches);
+  const { corrections, changed, relocated } = await finder.detectRelocations(settings, batches);
   assert.equal(changed, 2);
+  assert.deepEqual(relocated.map((m) => m.name).sort(), ['part-a.stl', 'part-b.stl']);
   assert.deepEqual(corrections.map((c) => [c.name, c.fromCat, c.toCat]).sort(), [['part-a.stl', 'other', 'design'], ['part-b.stl', 'other', 'design']]);
   assert.ok(batches[0].moves.every((m) => m.userMoved && m.userMoved.categoryId === 'design'));
 
@@ -40,7 +41,9 @@ test('a file dragged into another Inlet folder becomes a correction', async () =
   const learning = { events: [], dismissed: [] };
   suggest.record(learning, corrections);
   assert.equal(suggest.suggestions(learning, settings)[0].id, 'ext:stl->design');
-  assert.equal((await finder.detectRelocations(settings, batches)).changed, 0);
+  const again = await finder.detectRelocations(settings, batches);
+  assert.equal(again.changed, 0);
+  assert.deepEqual(again.relocated, []); // earlier finds aren't reported again (their paths may be stale by now)
 });
 
 test('a file dragged back out is recognised (so auto mode leaves it alone)', async () => {
@@ -63,9 +66,10 @@ test('moves within the same category, deletions, and old history are not correct
   fs.mkdirSync(path.join(dir, 'Images', 'Trips'));
   fs.renameSync(path.join(dir, 'Images', 'a.png'), path.join(dir, 'Images', 'Trips', 'a.png'));
   fs.rmSync(path.join(dir, 'Images', 'b.png'));
-  const { corrections, changed } = await finder.detectRelocations(settings, batches);
+  const { corrections, changed, relocated } = await finder.detectRelocations(settings, batches);
   assert.equal(changed, 2);
   assert.equal(corrections.length, 0);
+  assert.deepEqual(relocated.map((m) => m.name), ['a.png']); // a deleted file has no new place
   const b = batches[0].moves.find((m) => m.name === 'b.png');
   assert.equal(b.userMoved.to, null);
 

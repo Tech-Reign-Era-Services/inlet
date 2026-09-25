@@ -34,14 +34,14 @@ async function sourcesFor(p, mtimeMs) {
 
 /**
  * Stat one entry and build the file-info object the classifier works with. Returns null if gone or a symlink.
- * opts.knownSources(ino, size): sources Inlet remembers when macOS no longer has them (the provenance ledger).
+ * opts.knownSources(ino, size, dev): sources Inlet remembers when macOS no longer has them (the provenance ledger).
  */
 async function describe(fullPath, opts = {}) {
   let st;
   try { st = await fsp.lstat(fullPath); } catch { return null; }
   if (st.isSymbolicLink()) return null;
   let sources = await sourcesFor(fullPath, st.mtimeMs);
-  if (!sources.length && opts.knownSources) sources = opts.knownSources(st.ino, st.isDirectory() ? 0 : st.size) || [];
+  if (!sources.length && opts.knownSources) sources = opts.knownSources(st.ino, st.isDirectory() ? 0 : st.size, st.dev) || [];
   return {
     name: path.basename(fullPath),
     path: fullPath,
@@ -50,6 +50,7 @@ async function describe(fullPath, opts = {}) {
     mtimeMs: st.mtimeMs,
     addedMs: st.birthtimeMs || st.mtimeMs,
     ino: st.ino,
+    dev: st.dev, // inode numbers are only unique per disk
     sources,
     host: sources.length ? hostOf(sources[sources.length > 1 ? 1 : 0]) || hostOf(sources[0]) : '',
   };
@@ -134,7 +135,8 @@ async function execute(entries, trigger) {
       const to = await uniqueDest(entry.dest, entry.newName || path.basename(entry.path));
       await movePath(entry.path, to);
       let ino = null;
-      try { ino = (await fsp.lstat(to)).ino; } catch { /* ignore */ }
+      let dev = null;
+      try { ({ ino, dev } = await fsp.lstat(to)); } catch { /* ignore */ }
       batch.moves.push({
         id: crypto.randomUUID(),
         from: entry.path,
@@ -146,6 +148,8 @@ async function execute(entries, trigger) {
         kind: entry.kind || 'move', // 'move' | 'remove' (into the holding area)
         ino, // lets Inlet recognise the file if you later move it yourself in Finder
         fromIno: st.ino, // differs from ino when the move crossed disks (copied, so a new inode)
+        dev,
+        fromDev: st.dev,
         ...(entry.host && { host: entry.host }),
         ...(path.basename(to) !== path.basename(entry.path) && { originalName: path.basename(entry.path) }),
         undone: false,

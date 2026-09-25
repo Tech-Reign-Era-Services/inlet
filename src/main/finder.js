@@ -70,7 +70,7 @@ async function detectRelocations(settings, batches, now = Date.now()) {
     } catch { /* moved, renamed or deleted */ }
     missing.push(t);
   }
-  if (!missing.length) return { corrections: [], changed: 0 };
+  if (!missing.length) return { corrections: [], changed: 0, relocated: [] };
 
   const byIno = new Map();
   for (const fs_ of folders.eachFolderSettings(settings)) {
@@ -78,16 +78,18 @@ async function detectRelocations(settings, batches, now = Date.now()) {
   }
 
   const corrections = [];
+  const relocated = []; // moves found at a new place in this run (not ones found earlier)
   for (const { move } of missing) {
     const now_ = byIno.get(`${move.ino}:${move.size}`);
     if (!now_) { move.userMoved = { at: now, to: null }; continue; } // deleted, or moved somewhere Inlet doesn't watch
     const where = categoryAt(settings, now_);
     move.userMoved = { at: now, to: now_, ...(where === 'root' && { returned: true }), ...(where && where !== 'root' && { categoryId: where }) };
+    relocated.push(move);
     if (where && where !== 'root' && where !== move.categoryId && settings.categories.some((c) => c.id === where)) {
       corrections.push({ name: move.originalName || move.name, host: move.host || '', fromCat: move.categoryId, toCat: where, folderId: folders.folderFor(settings, now_)?.id });
     }
   }
-  return { corrections, changed: missing.length };
+  return { corrections, changed: missing.length, relocated };
 }
 
 module.exports = { trackedMoves, categoryAt, returnedMove, detectRelocations };

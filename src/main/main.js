@@ -113,8 +113,8 @@ async function rescan() {
       await recordFiles(lastScan.items);
       // A file just unzipped only gets its archive's website when it's recorded, after it was classified.
       // Scan once more so website rules (and the plan shown in Organize) use it. Converges: next time it has a source.
-      if (lastScan.items.some((it) => !it.sources.length && knownSources(it.ino, it.size).length)) scanAgain = true;
-      for (const it of lastScan.items) it.origin = ledger ? originSummary(ledger.get(it.ino, it.size)) : null;
+      if (lastScan.items.some((it) => !it.sources.length && knownSources(it.ino, it.size, it.dev).length)) scanAgain = true;
+      for (const it of lastScan.items) it.origin = ledger ? originSummary(ledger.get(it.ino, it.size, it.dev)) : null;
       await learnFromFinder();
       scanId++;
     } while (scanAgain);
@@ -161,7 +161,7 @@ function notifyMoves(moves, title) {
 async function runMoves(plan, trigger) {
   const batch = await organizer.execute(plan, trigger);
   // The ledger knows the file by its inode before the move; a move across disks gives it a new one.
-  for (const m of batch.moves) if (m.ino && ledger) ledger.moved(m.fromIno || m.ino, m.size, m.to, m.ino);
+  for (const m of batch.moves) if (m.ino && ledger) ledger.moved(m.fromIno || m.ino, m.size, m.to, m.ino, { dev: m.fromDev, newDev: m.dev });
   const saved = store.addBatch(batch);
   if (trigger === 'auto') notifyMoves(batch.moves);
   if (trigger === 'scheduled') notifyMoves(batch.moves, 'Scheduled tidy');
@@ -184,7 +184,7 @@ async function onArrival(fullPath, folderId) {
   if (!info) return;
   await recordFiles([info]);
   // Unzipped files learn their archive's website only now, as they're recorded: describe again so rules see it.
-  if (!info.sources.length && knownSources(info.ino, info.size).length) info = (await organizer.describe(fullPath, { knownSources })) || info;
+  if (!info.sources.length && knownSources(info.ino, info.size, info.dev).length) info = (await organizer.describe(fullPath, { knownSources })) || info;
   if (folders.effectiveMode(store.settings, folder) === 'auto') await autoSort(info, folders.folderSettings(store.settings, folder));
 }
 
@@ -210,9 +210,9 @@ async function undoBatch(batchId, moveId) {
   const restored = new Set(res.restored);
   for (const m of moves) {
     if (!restored.has(m.from) || !m.ino || !ledger) continue;
-    let back = m.ino; // putting it back across disks copies it again, so look up where it landed
-    try { back = (await fs.promises.lstat(m.from)).ino; } catch { /* gone again; keep the old key */ }
-    ledger.moved(m.ino, m.size, m.from, back);
+    let back = { ino: m.ino, dev: undefined }; // putting it back across disks copies it again, so look up where it landed
+    try { back = await fs.promises.lstat(m.from); } catch { /* gone again; keep the old key */ }
+    ledger.moved(m.ino, m.size, m.from, back.ino, { dev: m.dev, newDev: back.dev });
   }
   for (const w of watchers.values()) w.suppress(res.restored); // don't let auto mode immediately re-sort what the user just restored
   store.save('history');
@@ -274,7 +274,7 @@ function applySystemSettings() {
 
 // ---------- where files came from (provenance ledger) ----------
 
-const knownSources = (ino, size) => (ledger ? ledger.get(ino, size)?.urls || [] : []);
+const knownSources = (ino, size, dev) => (ledger ? ledger.get(ino, size, dev)?.urls || [] : []);
 
 /** Remember files we haven't seen (reading what macOS recorded about their origin), and refresh paths of known ones. */
 async function recordFiles(infos) {
@@ -318,7 +318,7 @@ async function backfillLedger() {
         const p = path.join(fs_.watchDir, d.name);
         try {
           const st = await fs.promises.lstat(p);
-          files.push({ name: d.name, path: p, ino: st.ino, size: 0, isDir: true, addedMs: st.birthtimeMs || st.mtimeMs });
+          files.push({ name: d.name, path: p, ino: st.ino, dev: st.dev, size: 0, isDir: true, addedMs: st.birthtimeMs || st.mtimeMs });
         } catch { /* vanished */ }
       }
       for (let i = 0; i < files.length; i += 200) await recordFiles(files.slice(i, i + 200));
@@ -346,11 +346,10 @@ async function learnFromFinder() {
   if (Date.now() - lastFinderCheck < 20000) return; // at most every 20s; rescans can be frequent
   lastFinderCheck = Date.now();
   try {
-    const { corrections, changed } = await finder.detectRelocations(store.settings, store.history.batches);
-    if (changed) {
-      store.save('history');
-      for (const b of store.history.batches) for (const m of b.moves) if (m.userMoved?.to && m.ino && ledger) ledger.moved(m.ino, m.size, m.userMoved.to);
-    }
+    const { corrections, changed, relocated } = await finder.detectRelocations(store.settings, store.history.batches);
+    if (changed) store.save('history');
+    // Only this run's finds: older userMoved paths are out of date once Inlet has moved the file again.
+    for (const m of relocated || []) if (m.ino && ledger) ledger.moved(m.ino, m.size, m.userMoved.to, m.ino, { dev: m.dev });
     if (corrections.length) {
       suggest.record(store.learning, corrections);
       store.save('learning');
