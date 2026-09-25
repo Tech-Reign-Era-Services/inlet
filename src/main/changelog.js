@@ -3,6 +3,17 @@
 // Shown in "What's new" after an update (newest first). Keep entries short and user-facing.
 module.exports = [
   {
+    version: '1.6.0',
+    title: 'Inlet remembers where files came from',
+    items: [
+      'Inlet now notes which website and app each download came from, the moment it arrives, even in Manual mode.',
+      'Files you unzip keep the website of the archive they came from. macOS forgets that; Inlet doesn’t.',
+      'See where a file came from by hovering over it in Organize, and in Activity.',
+      'Website rules now work for unzipped files too.',
+      'Settings → Download history: see what’s recorded, choose how long to keep it, export it, or clear it. It never leaves your Mac.',
+    ],
+  },
+  {
     version: '1.5.1',
     title: 'Tidy is now Inlet',
     items: [

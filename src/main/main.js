@@ -13,6 +13,8 @@ const suggest = require('./suggest');
 const finder = require('./finder');
 const portable = require('./portable');
 const changelog = require('./changelog');
+const provenance = require('./provenance');
+const { Ledger, summary: originSummary } = require('./ledger');
 const { classify, ruleMatches, renderName, OLD_FILES_FOLDER } = require('./classifier');
 const { TrayController } = require('./tray');
 
@@ -40,6 +42,7 @@ const APP_VERSION = require('../../package.json').version;
 if (!app.requestSingleInstanceLock()) app.quit();
 
 let store;
+let ledger; // where files came from (provenance ledger)
 const watchers = new Map(); // folder id → Watcher (auto mode only)
 let tray;
 let win = null;
@@ -51,8 +54,8 @@ let holding = { count: 0, bytes: 0 };
 // ---------- helpers ----------
 
 function publicItem(it) {
-  const { name, path: p, isDir, size, addedMs, host, kind, folderId, returned, decision } = it;
-  return { name, path: p, isDir, size, addedMs, host, kind, folderId, returned: !!returned, categoryId: decision.categoryId, dest: decision.dest, reason: decision.reason, newName: decision.newName };
+  const { name, path: p, isDir, size, addedMs, host, kind, folderId, returned, origin, decision } = it;
+  return { name, path: p, isDir, size, addedMs, host, kind, folderId, origin, returned: !!returned, categoryId: decision.categoryId, dest: decision.dest, reason: decision.reason, newName: decision.newName };
 }
 
 function undoSummary() {
@@ -65,7 +68,8 @@ function state() {
   return {
     settings: store.settings,
     stats: store.stats(),
-    autoRunning: !!watchers.get(folders.PRIMARY)?.running,
+    autoRunning: store.settings.mode === 'auto' && !!watchers.get(folders.PRIMARY)?.running,
+    ledger: ledgerStats(),
     folders: folders.allFolders(store.settings).map((f) => ({ ...f, effectiveMode: folders.effectiveMode(store.settings, f) })),
     suggestions: suggest.suggestions(store.learning, store.settings),
     whatsNew: whatsNew(),
@@ -96,7 +100,7 @@ async function rescan() {
     do {
       scanAgain = false;
       const perFolder = folders.eachFolderSettings(store.settings);
-      const results = await Promise.all(perFolder.map((fs_) => organizer.scan(fs_)));
+      const results = await Promise.all(perFolder.map((fs_) => organizer.scan(fs_, { knownSources })));
       lastScan = {
         items: results.flatMap((r) => r.items).sort((a, b) => b.addedMs - a.addedMs),
         skipped: results.flatMap((r, i) => r.skipped.map((sk) => ({ ...sk, folderId: perFolder[i].folderId }))),
@@ -106,6 +110,8 @@ async function rescan() {
       holding = await cleanup.holdingStats(perFolder);
       // Files Inlet sorted that you dragged back out: show them, but don't tidy them by default.
       for (const it of lastScan.items) if (finder.returnedMove(store.history.batches, it)) it.returned = true;
+      await recordFiles(lastScan.items);
+      for (const it of lastScan.items) it.origin = ledger ? originSummary(ledger.get(it.ino, it.size)) : null;
       await learnFromFinder();
       scanId++;
     } while (scanAgain);
@@ -150,6 +156,7 @@ function notifyMoves(moves, title) {
 
 async function runMoves(plan, trigger) {
   const batch = await organizer.execute(plan, trigger);
+  for (const m of batch.moves) if (m.ino && ledger) ledger.moved(m.ino, m.size, m.to);
   const saved = store.addBatch(batch);
   if (trigger === 'auto') notifyMoves(batch.moves);
   if (trigger === 'scheduled') notifyMoves(batch.moves, 'Scheduled tidy');
@@ -164,9 +171,17 @@ async function tidyAll(trigger) {
   return runMoves(plan, trigger);
 }
 
-async function autoSort(fullPath, fsettings) {
-  const info = await organizer.describe(fullPath);
+/** A file finished arriving in a watched folder: remember where it came from, and sort it if the folder is in Auto mode. */
+async function onArrival(fullPath, folderId) {
+  const folder = folders.watchedFolders(store.settings).find((f) => f.id === folderId);
+  if (!folder) return;
+  const info = await organizer.describe(fullPath, { knownSources });
   if (!info) return;
+  await recordFiles([info]);
+  if (folders.effectiveMode(store.settings, folder) === 'auto') await autoSort(info, folders.folderSettings(store.settings, folder));
+}
+
+async function autoSort(info, fsettings) {
   // You dragged a sorted file back out: that means "leave it here", so don't sort it again.
   const back = finder.returnedMove(store.history.batches, info);
   if (back) {
@@ -176,7 +191,7 @@ async function autoSort(fullPath, fsettings) {
   await organizer.enrich([info], fsettings);
   const decision = classify(info, fsettings);
   if (decision.action !== 'move') return;
-  await runMoves([{ path: info.path, dest: decision.dest, categoryId: decision.categoryId, reason: decision.reason, newName: decision.newName }], 'auto');
+  await runMoves([{ path: info.path, dest: decision.dest, categoryId: decision.categoryId, reason: decision.reason, newName: decision.newName, host: info.host }], 'auto');
 }
 
 async function undoBatch(batchId, moveId) {
@@ -185,6 +200,7 @@ async function undoBatch(batchId, moveId) {
   // Files you've since moved yourself aren't Inlet's to put back.
   const moves = (moveId ? batch.moves.filter((m) => m.id === moveId) : batch.moves).filter((m) => !m.userMoved);
   const res = await organizer.undo(moves);
+  for (const m of moves) if (m.undone && m.ino && ledger) ledger.moved(m.ino, m.size, m.from);
   for (const w of watchers.values()) w.suppress(res.restored); // don't let auto mode immediately re-sort what the user just restored
   store.save('history');
   await rescan();
@@ -197,24 +213,32 @@ async function undoLast() {
   return { ...(await undoBatch(b.id)), trigger: b.trigger };
 }
 
-/** Run one watcher per folder whose mode (its own, or Inlet's) is auto. */
+/**
+ * One watcher per watched folder. In Auto mode it sorts new files; in every mode it notes where they came from
+ * (unless "Remember where files came from" is off, in which case only Auto folders are watched).
+ */
 function applyMode() {
-  const want = folders.autoFolders(store.settings);
+  const recording = store.settings.ledgerEnabled !== false;
+  const want = recording ? folders.watchedFolders(store.settings) : folders.autoFolders(store.settings);
   const wantIds = new Set(want.map((f) => f.id));
   for (const [id, w] of watchers) {
     if (!wantIds.has(id)) { w.stop(); watchers.delete(id); }
   }
   for (const f of want) {
+    const startedAt = Date.now();
     const current = () => {
       const latest = folders.watchedFolders(store.settings).find((x) => x.id === f.id) || f;
-      return folders.folderSettings(store.settings, latest);
+      const fs_ = folders.folderSettings(store.settings, latest);
+      // Recording-only watchers look at new arrivals; existing files are covered by the backfill.
+      if (folders.effectiveMode(store.settings, latest) !== 'auto') fs_.autoSince = Math.max(fs_.autoSince || 0, startedAt);
+      return fs_;
     };
     let w = watchers.get(f.id);
     if (w && w.dir !== f.path) { w.stop(); watchers.delete(f.id); w = null; } // folder was moved/changed
     if (!w) {
       w = new Watcher({
         getSettings: current,
-        onReady: (p) => autoSort(p, current()),
+        onReady: (p) => onArrival(p, f.id),
         onError: (err) => console.error(`[watcher ${f.label}]`, err.message),
       });
       watchers.set(f.id, w);
@@ -235,6 +259,58 @@ function applySystemSettings() {
   }
 }
 
+// ---------- where files came from (provenance ledger) ----------
+
+const knownSources = (ino, size) => (ledger ? ledger.get(ino, size)?.urls || [] : []);
+
+/** Remember files we haven't seen (reading what macOS recorded about their origin), and refresh paths of known ones. */
+async function recordFiles(infos) {
+  if (!ledger || store.settings.ledgerEnabled === false) return;
+  const fresh = [];
+  for (const i of infos) {
+    if (!i || !i.ino) continue;
+    if (ledger.has(i)) ledger.record(i, null); else fresh.push(i);
+  }
+  if (!fresh.length) return;
+  const prov = await provenance.readMany(fresh.map((i) => i.path));
+  for (const i of fresh) ledger.record(i, prov.get(i.path) || null);
+}
+
+/** First run (and each newly added folder): remember the files already there, while macOS still has their origin. */
+let backfilling = false;
+async function backfillLedger() {
+  if (!ledger || backfilling || store.settings.ledgerEnabled === false) return;
+  backfilling = true;
+  try {
+    for (const fs_ of folders.eachFolderSettings(store.settings)) {
+      if ((store.settings.ledgerBackfilled || {})[fs_.folderId]) continue;
+      const files = await cleanup.collectFiles(fs_);
+      // Loose folders too (often unzipped downloads): their quarantine id links them to the archive's source.
+      try {
+        for (const d of await fs.promises.readdir(fs_.watchDir, { withFileTypes: true })) {
+          if (!d.isDirectory() || d.name.startsWith('.')) continue;
+          const p = path.join(fs_.watchDir, d.name);
+          const st = await fs.promises.lstat(p);
+          files.push({ name: d.name, path: p, ino: st.ino, size: 0, isDir: true, addedMs: st.birthtimeMs || st.mtimeMs });
+        }
+      } catch { /* unreadable folder */ }
+      for (let i = 0; i < files.length; i += 200) await recordFiles(files.slice(i, i + 200));
+      store.updateSettings({ ledgerBackfilled: { ...(store.settings.ledgerBackfilled || {}), [fs_.folderId]: Date.now() } });
+    }
+    await rescan();
+  } finally {
+    backfilling = false;
+  }
+}
+
+let ledgerStatsCache = null;
+let ledgerStatsAt = 0;
+function ledgerStats() {
+  if (!ledger) return null;
+  if (!ledgerStatsCache || Date.now() - ledgerStatsAt > 5000) { ledgerStatsCache = ledger.stats(); ledgerStatsAt = Date.now(); }
+  return { ...ledgerStatsCache, backfilling };
+}
+
 // ---------- learning from Finder ----------
 
 let lastFinderCheck = 0;
@@ -243,7 +319,10 @@ async function learnFromFinder() {
   lastFinderCheck = Date.now();
   try {
     const { corrections, changed } = await finder.detectRelocations(store.settings, store.history.batches);
-    if (changed) store.save('history');
+    if (changed) {
+      store.save('history');
+      for (const b of store.history.batches) for (const m of b.moves) if (m.userMoved?.to && m.ino && ledger) ledger.moved(m.ino, m.size, m.userMoved.to);
+    }
     if (corrections.length) {
       suggest.record(store.learning, corrections);
       store.save('learning');
@@ -572,6 +651,20 @@ function registerIpc() {
 
   ipcMain.handle('holding:empty', () => emptyHolding());
 
+  // ----- download history (provenance ledger) -----
+  ipcMain.handle('ledger:export', async () => {
+    const res = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath('desktop'), 'Inlet Download History.json'), filters: [{ name: 'JSON', extensions: ['json'] }] });
+    if (res.canceled || !res.filePath) return { canceled: true };
+    fs.writeFileSync(res.filePath, JSON.stringify({ app: 'Inlet', exportedAt: new Date().toISOString(), files: ledger.toJSON() }, null, 2));
+    return { path: res.filePath };
+  });
+  ipcMain.handle('ledger:clear', async () => {
+    ledger.clear();
+    ledgerStatsCache = null;
+    await rescan();
+    return state();
+  });
+
   // ----- rules: export / import / sync -----
   const iCloudFolder = () => {
     const icloud = path.join(app.getPath('home'), 'Library', 'Mobile Documents', 'com~apple~CloudDocs');
@@ -626,7 +719,7 @@ function registerIpc() {
   ipcMain.handle('whatsnew:seen', () => { store.updateSettings({ lastSeenVersion: APP_VERSION }); return state(); });
 
   // ----- watched folders -----
-  const afterFolderChange = async () => { applyMode(); await rescan(); return state(); };
+  const afterFolderChange = async () => { applyMode(); await rescan(); backfillLedger(); return state(); };
   ipcMain.handle('folders:add', async (_e, p) => {
     const error = folders.validateNewFolder(store.settings, p);
     if (error) return { error };
@@ -654,7 +747,7 @@ function registerIpc() {
     const out = [];
     const desktop = app.getPath('desktop');
     if (!folders.validateNewFolder(store.settings, desktop)) out.push({ path: desktop, label: 'Desktop', why: 'Where screenshots land by default' });
-    const shots = await new Promise((resolve) => require('child_process').execFile('defaults', ['read', 'com.apple.screencapture', 'location'],
+    const shots = await new Promise((resolve) => require('child_process').execFile('/usr/bin/defaults', ['read', 'com.apple.screencapture', 'location'],
       { encoding: 'utf8' }, (err, stdout) => resolve(err ? null : stdout.trim())));
     const shotsPath = shots && path.resolve(shots.replace(/^~/, app.getPath('home')));
     if (shotsPath && shotsPath !== desktop && !folders.validateNewFolder(store.settings, shotsPath)) {
@@ -726,6 +819,8 @@ app.on('second-instance', () => showWindow());
 
 app.whenReady().then(async () => {
   store = new Store(DATA_DIR);
+  ledger = new Ledger(DATA_DIR);
+  ledger.prune(store.settings.ledgerKeepDays);
   if (env('WATCH_DIR')) store.updateSettings({ watchDir: env('WATCH_DIR') });
   // Removed files from the Tidy days live in ".Tidy Removed"; move them (and their undo history) across.
   if (cleanup.migrateLegacyHolding(folders.eachFolderSettings(store.settings), store.history.batches)) store.save('history');
@@ -767,6 +862,8 @@ app.whenReady().then(async () => {
   applySystemSettings();
   await rescan();
   await purgeExpired();
+  setTimeout(backfillLedger, 3000); // after the window is up; runs in the background
+  setInterval(() => { ledger.prune(store.settings.ledgerKeepDays); backfillLedger(); }, 6 * 60 * 60 * 1000);
   watchSyncFile();
   await readSyncFile();
   setInterval(rescan, 5 * 60 * 1000);

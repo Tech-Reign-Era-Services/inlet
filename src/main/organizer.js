@@ -32,12 +32,16 @@ async function sourcesFor(p, mtimeMs) {
   return sourceCache.get(key);
 }
 
-/** Stat one entry and build the file-info object the classifier works with. Returns null if gone or a symlink. */
-async function describe(fullPath) {
+/**
+ * Stat one entry and build the file-info object the classifier works with. Returns null if gone or a symlink.
+ * opts.knownSources(ino, size): sources Inlet remembers when macOS no longer has them (the provenance ledger).
+ */
+async function describe(fullPath, opts = {}) {
   let st;
   try { st = await fsp.lstat(fullPath); } catch { return null; }
   if (st.isSymbolicLink()) return null;
-  const sources = await sourcesFor(fullPath, st.mtimeMs);
+  let sources = await sourcesFor(fullPath, st.mtimeMs);
+  if (!sources.length && opts.knownSources) sources = opts.knownSources(st.ino, st.isDirectory() ? 0 : st.size) || [];
   return {
     name: path.basename(fullPath),
     path: fullPath,
@@ -65,7 +69,7 @@ async function enrich(infos, settings) {
 }
 
 /** Scan the watched folder and classify everything in it (a dry run — nothing moves). */
-async function scan(settings) {
+async function scan(settings, opts = {}) {
   const reserved = reservedNames(settings);
   let entries;
   try {
@@ -80,7 +84,7 @@ async function scan(settings) {
     if (reason) { if (reason !== 'hidden') skipped.push({ name: e.name, reason }); continue; }
     candidates.push(path.join(settings.watchDir, e.name));
   }
-  const infos = await enrich((await mapLimit(candidates, 12, describe)).filter(Boolean), settings);
+  const infos = await enrich((await mapLimit(candidates, 12, (p) => describe(p, opts))).filter(Boolean), settings);
   const items = [];
   for (const info of infos) {
     const decision = classify(info, settings, reserved);

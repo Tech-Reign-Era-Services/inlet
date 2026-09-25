@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('tidy', {
   pickSyncFolder: invoke('sync:pick'),
   setSync: invoke('sync:set'),
   markWhatsNewSeen: invoke('whatsnew:seen'),
+  exportLedger: invoke('ledger:export'),
+  clearLedger: invoke('ledger:clear'),
   onSyncApplied: (fn) => ipcRenderer.on('sync:applied', (_e, summary) => fn(summary)),
   clearHistory: invoke('history:clear'),
   testRule: invoke('rule:test'),
