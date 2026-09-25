@@ -1,0 +1,59 @@
+{
+  "name": "inlet",
+  "productName": "Inlet",
+  "version": "1.5.1",
+  "description": "Keeps your Downloads folder clean by sorting files into category folders — automatically or on demand.",
+  "main": "src/main/main.js",
+  "author": "Tech Reign Era Services",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Tech-Reign-Era-Services/inlet.git"
+  },
+  "homepage": "https://github.com/Tech-Reign-Era-Services/inlet#readme",
+  "bugs": {
+    "url": "https://github.com/Tech-Reign-Era-Services/inlet/issues"
+  },
+  "private": true,
+  "scripts": {
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "test": "node --test test/*.test.js",
+    "icons": "node scripts/make-icons.js",
+    "dist": "npm run icons && electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.techreignera.inlet",
+    "productName": "Inlet",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "LSUIElement": false,
+        "NSDownloadsFolderUsageDescription": "Inlet sorts the files in your Downloads folder into category folders."
+      },
+      "identity": null,
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "files": [
+      "src/**/*",
+      "build/tray*.png",
+      "package.json"
+    ],
+    "dmg": {
+      "title": "Inlet ${version}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  }
+}

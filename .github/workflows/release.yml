@@ -1,0 +1,52 @@
+# Builds unsigned DMGs (Apple silicon + Intel) and attaches them to a draft GitHub release.
+# Push a tag like v1.6.0 to run it, or start it by hand from the Actions tab with a tag name.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build, e.g. v1.5.1'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false' # no signing certificate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Check the tag matches package.json
+        run: |
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$PKG" != "$TAG" ]; then echo "Tag $TAG doesn't match package.json version $PKG"; exit 1; fi
+
+      - run: npm run dist
+
+      - name: Attach DMGs to a draft release
+        run: |
+          VERSION="${TAG#v}"
+          sed "s/VERSION/$VERSION/g" .github/release-notes.md > notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.dmg --clobber
+          else
+            gh release create "$TAG" dist/*.dmg --draft --title "Inlet $VERSION" --notes-file notes.md
+          fi

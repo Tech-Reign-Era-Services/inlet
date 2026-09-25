@@ -1,0 +1,785 @@
+'use strict';
+
+const path = require('path');
+const fs = require('fs');
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification, nativeImage, Menu } = require('electron');
+const { Store } = require('./store');
+const { Watcher } = require('./watcher');
+const organizer = require('./organizer');
+const cleanup = require('./cleanup');
+const folders = require('./folders');
+const spotlight = require('./spotlight');
+const suggest = require('./suggest');
+const finder = require('./finder');
+const portable = require('./portable');
+const changelog = require('./changelog');
+const { classify, ruleMatches, renderName, OLD_FILES_FOLDER } = require('./classifier');
+const { TrayController } = require('./tray');
+
+app.setName('Inlet');
+// Dev overrides let you point Inlet at a sandbox folder instead of your real Downloads.
+// A sandbox gets its own profile, so it runs alongside (not instead of) your real Inlet.
+// (INLET_* env vars; the TIDY_* names from before the rename still work.)
+const env = (name) => process.env[`INLET_${name}`] || process.env[`TIDY_${name}`];
+if (env('DATA_DIR')) app.setPath('userData', path.resolve(env('DATA_DIR')));
+const DATA_DIR = app.getPath('userData');
+migrateFromTidy();
+
+/** The app used to be called Tidy: bring its settings, history and learning across on first launch. */
+function migrateFromTidy() {
+  if (env('DATA_DIR')) return;
+  const oldDir = path.join(app.getPath('appData'), 'Tidy');
+  if (fs.existsSync(path.join(DATA_DIR, 'settings.json')) || !fs.existsSync(path.join(oldDir, 'settings.json'))) return;
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  for (const f of ['settings.json', 'history.json', 'learning.json']) {
+    if (fs.existsSync(path.join(oldDir, f))) fs.copyFileSync(path.join(oldDir, f), path.join(DATA_DIR, f));
+  }
+}
+// From package.json, not app.getVersion(): that returns Electron's version when launched unpackaged from a script.
+const APP_VERSION = require('../../package.json').version;
+if (!app.requestSingleInstanceLock()) app.quit();
+
+let store;
+const watchers = new Map(); // folder id → Watcher (auto mode only)
+let tray;
+let win = null;
+let quitting = false;
+let lastScan = { items: [], skipped: [], error: null };
+let scanId = 0;
+let holding = { count: 0, bytes: 0 };
+
+// ---------- helpers ----------
+
+function publicItem(it) {
+  const { name, path: p, isDir, size, addedMs, host, kind, folderId, returned, decision } = it;
+  return { name, path: p, isDir, size, addedMs, host, kind, folderId, returned: !!returned, categoryId: decision.categoryId, dest: decision.dest, reason: decision.reason, newName: decision.newName };
+}
+
+function undoSummary() {
+  const b = store.lastUndoable();
+  if (!b) return null;
+  return { id: b.id, trigger: b.trigger, time: b.time, count: b.moves.filter((m) => !m.undone && !m.purged && !m.userMoved).length };
+}
+
+function state() {
+  return {
+    settings: store.settings,
+    stats: store.stats(),
+    autoRunning: !!watchers.get(folders.PRIMARY)?.running,
+    folders: folders.allFolders(store.settings).map((f) => ({ ...f, effectiveMode: folders.effectiveMode(store.settings, f) })),
+    suggestions: suggest.suggestions(store.learning, store.settings),
+    whatsNew: whatsNew(),
+    changelog,
+    scanErrors: lastScan.errors || [],
+    unsorted: lastScan.items.length,
+    unsortedBytes: lastScan.items.reduce((s, i) => s + i.size, 0),
+    scanId,
+    recent: store.history.batches.slice(0, 6),
+    lastUndoable: undoSummary(),
+    holding,
+    nextScheduled: nextScheduledRun(),
+    version: APP_VERSION,
+  };
+}
+
+function broadcast() {
+  if (win && !win.isDestroyed()) win.webContents.send('state:changed', state());
+  if (tray) tray.refresh();
+}
+
+// Coalesce overlapping scans: callers during a scan get that scan's result, plus one follow-up.
+let scanning = null;
+let scanAgain = false;
+async function rescan() {
+  if (scanning) { scanAgain = true; return scanning; }
+  scanning = (async () => {
+    do {
+      scanAgain = false;
+      const perFolder = folders.eachFolderSettings(store.settings);
+      const results = await Promise.all(perFolder.map((fs_) => organizer.scan(fs_)));
+      lastScan = {
+        items: results.flatMap((r) => r.items).sort((a, b) => b.addedMs - a.addedMs),
+        skipped: results.flatMap((r, i) => r.skipped.map((sk) => ({ ...sk, folderId: perFolder[i].folderId }))),
+        error: results[0].error,
+        errors: results.map((r, i) => r.error && { folderId: perFolder[i].folderId, error: r.error }).filter(Boolean),
+      };
+      holding = await cleanup.holdingStats(perFolder);
+      // Files Inlet sorted that you dragged back out: show them, but don't tidy them by default.
+      for (const it of lastScan.items) if (finder.returnedMove(store.history.batches, it)) it.returned = true;
+      await learnFromFinder();
+      scanId++;
+    } while (scanAgain);
+    broadcast();
+    return lastScan;
+  })();
+  try { return await scanning; } finally { scanning = null; }
+}
+
+function showWindow(page) {
+  if (!win || win.isDestroyed()) createWindow();
+  if (process.platform === 'darwin' && app.dock) app.dock.show();
+  win.show();
+  win.focus();
+  if (page) win.webContents.send('navigate', page);
+}
+
+const catName = (id) => store.settings.categories.find((c) => c.id === id)?.name || 'Other';
+
+// Notifications are batched so a burst of downloads produces one banner.
+let pendingNotice = [];
+let noticeTitle = null;
+let noticeTimer = null;
+function notifyMoves(moves, title) {
+  if (!store.settings.notifications || !Notification.isSupported() || !moves.length) return;
+  pendingNotice.push(...moves);
+  if (title) noticeTitle = title;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => {
+    const list = pendingNotice;
+    const heading = noticeTitle;
+    pendingNotice = [];
+    noticeTitle = null;
+    const body = list.length === 1
+      ? `${list[0].name} → ${catName(list[0].categoryId)}`
+      : `${list.length} files sorted into ${[...new Set(list.map((m) => catName(m.categoryId)))].slice(0, 3).join(', ')}`;
+    const n = new Notification({ title: heading || (list.length === 1 ? 'Sorted a download' : 'Sorted your downloads'), body, silent: true });
+    n.on('click', () => showWindow('activity'));
+    n.show();
+  }, 2000);
+}
+
+async function runMoves(plan, trigger) {
+  const batch = await organizer.execute(plan, trigger);
+  const saved = store.addBatch(batch);
+  if (trigger === 'auto') notifyMoves(batch.moves);
+  if (trigger === 'scheduled') notifyMoves(batch.moves, 'Scheduled tidy');
+  await rescan();
+  return { ...batch, id: saved ? saved.id : batch.id };
+}
+
+async function tidyAll(trigger) {
+  await rescan();
+  const paths = lastScan.items.filter((i) => !i.returned).map((i) => i.path); // respect files you pulled back out
+  const plan = organizer.planFromItems(lastScan.items, store.settings, paths);
+  return runMoves(plan, trigger);
+}
+
+async function autoSort(fullPath, fsettings) {
+  const info = await organizer.describe(fullPath);
+  if (!info) return;
+  // You dragged a sorted file back out: that means "leave it here", so don't sort it again.
+  const back = finder.returnedMove(store.history.batches, info);
+  if (back) {
+    if (!back.userMoved) { back.userMoved = { at: Date.now(), to: info.path, returned: true }; store.save('history'); }
+    return;
+  }
+  await organizer.enrich([info], fsettings);
+  const decision = classify(info, fsettings);
+  if (decision.action !== 'move') return;
+  await runMoves([{ path: info.path, dest: decision.dest, categoryId: decision.categoryId, reason: decision.reason, newName: decision.newName }], 'auto');
+}
+
+async function undoBatch(batchId, moveId) {
+  const batch = store.findBatch(batchId);
+  if (!batch) return { restored: [], failed: [{ message: 'Nothing to undo' }] };
+  // Files you've since moved yourself aren't Inlet's to put back.
+  const moves = (moveId ? batch.moves.filter((m) => m.id === moveId) : batch.moves).filter((m) => !m.userMoved);
+  const res = await organizer.undo(moves);
+  for (const w of watchers.values()) w.suppress(res.restored); // don't let auto mode immediately re-sort what the user just restored
+  store.save('history');
+  await rescan();
+  return res;
+}
+
+async function undoLast() {
+  const b = store.lastUndoable();
+  if (!b) return { restored: [], failed: [], nothing: true };
+  return { ...(await undoBatch(b.id)), trigger: b.trigger };
+}
+
+/** Run one watcher per folder whose mode (its own, or Inlet's) is auto. */
+function applyMode() {
+  const want = folders.autoFolders(store.settings);
+  const wantIds = new Set(want.map((f) => f.id));
+  for (const [id, w] of watchers) {
+    if (!wantIds.has(id)) { w.stop(); watchers.delete(id); }
+  }
+  for (const f of want) {
+    const current = () => {
+      const latest = folders.watchedFolders(store.settings).find((x) => x.id === f.id) || f;
+      return folders.folderSettings(store.settings, latest);
+    };
+    let w = watchers.get(f.id);
+    if (w && w.dir !== f.path) { w.stop(); watchers.delete(f.id); w = null; } // folder was moved/changed
+    if (!w) {
+      w = new Watcher({
+        getSettings: current,
+        onReady: (p) => autoSort(p, current()),
+        onError: (err) => console.error(`[watcher ${f.label}]`, err.message),
+      });
+      watchers.set(f.id, w);
+    }
+    if (!w.running) w.start();
+  }
+}
+const stopWatchers = () => { for (const w of watchers.values()) w.stop(); watchers.clear(); };
+
+function applySystemSettings() {
+  if (process.platform !== 'darwin') return;
+  if (app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: !!store.settings.launchAtLogin, openAsHidden: true });
+  }
+  if (app.dock) {
+    if (store.settings.showDockIcon || (win && win.isVisible())) app.dock.show();
+    else app.dock.hide();
+  }
+}
+
+// ---------- learning from Finder ----------
+
+let lastFinderCheck = 0;
+async function learnFromFinder() {
+  if (Date.now() - lastFinderCheck < 20000) return; // at most every 20s; rescans can be frequent
+  lastFinderCheck = Date.now();
+  try {
+    const { corrections, changed } = await finder.detectRelocations(store.settings, store.history.batches);
+    if (changed) store.save('history');
+    if (corrections.length) {
+      suggest.record(store.learning, corrections);
+      store.save('learning');
+    }
+  } catch (err) {
+    console.error('[finder]', err.message);
+  }
+}
+
+// ---------- rules sync & import/export ----------
+
+let syncTimer = null;
+let syncWatched = null;
+
+/** Write this Mac's rules to the sync file (debounced), after any change to them. */
+function scheduleSyncWrite() {
+  if (!store.settings.syncFile) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    const updatedAt = Date.now();
+    try {
+      portable.writeFile(store.settings.syncFile, store.settings, APP_VERSION, updatedAt);
+      store.updateSettings({ syncUpdatedAt: updatedAt, syncError: '' });
+    } catch (err) {
+      store.updateSettings({ syncError: `Couldn’t write the sync file: ${err.message}` });
+    }
+    broadcast();
+  }, 1000);
+}
+
+/** Pick up rules another Mac wrote to the sync file. */
+async function readSyncFile() {
+  const file = store.settings.syncFile;
+  if (!file || !fs.existsSync(file)) return;
+  const parsed = portable.readFile(file);
+  if (parsed.error) { store.updateSettings({ syncError: parsed.error }); broadcast(); return; }
+  if (parsed.updatedAt <= (store.settings.syncUpdatedAt || 0)) return;
+  store.updateSettings({ ...parsed.settings, syncUpdatedAt: parsed.updatedAt, syncError: '' });
+  await rescan();
+  if (win && !win.isDestroyed()) win.webContents.send('sync:applied', parsed.summary);
+}
+
+function watchSyncFile() {
+  if (syncWatched) fs.unwatchFile(syncWatched);
+  syncWatched = store.settings.syncFile || null;
+  // Polling, not FSEvents: iCloud/Dropbox replace the file rather than editing it.
+  if (syncWatched) fs.watchFile(syncWatched, { interval: 5000 }, () => readSyncFile());
+}
+
+/** Run after any settings change: keeps the sync file current when shareable settings changed. */
+function afterSettingsChange(prev) {
+  if (portable.portableChanged(prev, store.settings)) scheduleSyncWrite();
+}
+
+const semver = (v) => String(v).split('.').map(Number);
+const newer = (a, b) => { const x = semver(a); const y = semver(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+/** Release notes you haven't seen yet (empty on a fresh install). */
+function whatsNew() {
+  const seen = store.settings.lastSeenVersion;
+  if (!store.settings.onboarded || !seen) return [];
+  return changelog.filter((e) => newer(e.version, seen) && !newer(e.version, APP_VERSION));
+}
+
+// ---------- schedule ----------
+
+function slotFor(day, time) {
+  const [hh, mm] = String(time || '18:00').split(':').map(Number);
+  const d = new Date(day);
+  d.setHours(hh || 0, mm || 0, 0, 0);
+  return d;
+}
+
+/** Today's slot if it's due and hasn't run yet (a slot missed while the Mac slept runs on wake, same day only). */
+function scheduleDue(now = new Date()) {
+  const sch = store.settings.schedule;
+  if (!sch || !sch.enabled || !sch.days.includes(now.getDay())) return false;
+  const slot = slotFor(now, sch.time).getTime();
+  return now.getTime() >= slot && slot > (sch.enabledAt || 0) && (store.settings.lastScheduledRun || 0) < slot;
+}
+
+function nextScheduledRun() {
+  const sch = store.settings.schedule;
+  if (!sch || !sch.enabled || !sch.days.length) return null;
+  const now = new Date();
+  for (let i = 0; i < 8; i++) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    if (!sch.days.includes(day.getDay())) continue;
+    const slot = slotFor(day, sch.time).getTime();
+    if (slot > now.getTime() || (i === 0 && scheduleDue(now))) return slot;
+  }
+  return null;
+}
+
+async function tickSchedule() {
+  if (!scheduleDue()) return;
+  store.updateSettings({ lastScheduledRun: Date.now() });
+  try { await tidyAll('scheduled'); } catch (err) { console.error('[schedule]', err.message); }
+}
+
+// ---------- holding area ----------
+
+async function purgeExpired() {
+  const expired = cleanup.expiredRemovals(store.history.batches, store.settings.retentionDays);
+  if (!expired.length) return;
+  await cleanup.purge(expired, (p) => shell.trashItem(p));
+  store.save('history');
+  await rescan();
+}
+
+/** Send everything in the holding area to the macOS Trash now. */
+async function emptyHolding() {
+  const live = [];
+  for (const b of store.history.batches) for (const m of b.moves) if (m.kind === 'remove' && !m.undone && !m.purged) live.push(m);
+  await cleanup.purge(live, (p) => shell.trashItem(p));
+  // Anything left over (e.g. from before history was cleared).
+  for (const fs_ of folders.eachFolderSettings(store.settings)) {
+    const dir = cleanup.holdingDir(fs_);
+    try {
+      for (const name of await fs.promises.readdir(dir)) await shell.trashItem(path.join(dir, name)).catch(() => {});
+      await fs.promises.rmdir(dir).catch(() => {});
+    } catch { /* no holding dir */ }
+  }
+  store.save('history');
+  await rescan();
+}
+
+// ---------- window & menu ----------
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1120,
+    height: 740,
+    minWidth: 920,
+    minHeight: 600,
+    show: false,
+    title: 'Inlet',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 18, y: 18 },
+    vibrancy: 'sidebar',
+    visualEffectState: 'active',
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, '..', 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: false,
+    },
+  });
+  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  win.once('ready-to-show', () => {
+    const hidden = app.getLoginItemSettings().wasOpenedAtLogin || env('SCREENSHOTS');
+    if (!hidden) win.show();
+  });
+  win.on('close', (e) => {
+    // Keep running in the menu bar so auto mode and the schedule continue.
+    if (!quitting) {
+      e.preventDefault();
+      win.hide();
+      if (!store.settings.showDockIcon && app.dock) app.dock.hide();
+    }
+  });
+  win.on('focus', () => { rescan(); });
+  // Open external links in the browser, never inside the app.
+  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.on('will-navigate', (e) => e.preventDefault());
+}
+
+function buildMenu() {
+  const go = (page, key) => ({ label: page[0].toUpperCase() + page.slice(1), accelerator: `CmdOrCtrl+${key}`, click: () => showWindow(page) });
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { role: 'appMenu' },
+    {
+      label: 'Edit',
+      submenu: [
+        // ⌘Z undoes text edits while typing, otherwise the last thing Inlet did (the renderer decides).
+        { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => win && !win.isDestroyed() && win.webContents.send('menu:undo') },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'Go',
+      submenu: [go('overview', 1), go('organize', 2), go('cleanup', 3), go('rules', 4), go('activity', 5), go('settings', 6)],
+    },
+    { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [{ label: 'Take the Tour', click: () => { showWindow(); win.webContents.send('menu:tour'); } }],
+    },
+  ]));
+}
+
+// ---------- IPC ----------
+
+const iconCache = new Map();
+const THUMB_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'tif', 'tiff', 'bmp', 'pdf', 'mp4', 'mov', 'm4v', 'svg', 'psd']);
+
+/** Only let the renderer act on files Inlet manages: inside a watched folder, outside its holding area. */
+function isManagedPath(p) {
+  const f = folders.folderFor(store.settings, p);
+  const r = path.resolve(p);
+  if (!f || r === path.resolve(f.path)) return false;
+  return !folders.isInside(r, path.resolve(cleanup.holdingDir(folders.folderSettings(store.settings, f))));
+}
+
+function registerIpc() {
+  ipcMain.handle('state:get', () => state());
+
+  ipcMain.handle('settings:update', async (_e, patch) => {
+    const prev = store.settings;
+    if (patch.mode === 'auto' && prev.mode !== 'auto') patch.autoSince = Date.now();
+    // A schedule change only applies from now on — don't fire a slot that already passed today.
+    if (patch.schedule) patch.schedule = { ...prev.schedule, ...patch.schedule, enabledAt: Date.now() };
+    // Onboarding counts as having seen the current release notes.
+    if (patch.onboarded && !prev.onboarded) patch.lastSeenVersion = APP_VERSION;
+    store.updateSettings(patch);
+    afterSettingsChange(prev);
+    applyMode();
+    applySystemSettings();
+    await rescan();
+    return state();
+  });
+
+  ipcMain.handle('settings:reset', async () => {
+    const prev = store.settings;
+    store.resetSettings();
+    afterSettingsChange(prev);
+    applyMode();
+    applySystemSettings();
+    await rescan();
+    return state();
+  });
+
+  const scanResult = () => ({ items: lastScan.items.map(publicItem), skipped: lastScan.skipped, error: lastScan.error, scanId });
+  ipcMain.handle('scan', async () => { await rescan(); return scanResult(); });
+  ipcMain.handle('scan:get', () => scanResult());
+
+  ipcMain.handle('organize', async (_e, { paths, overrides } = {}) => {
+    const selected = paths || lastScan.items.map((i) => i.path);
+    const byPath = new Map(lastScan.items.map((i) => [i.path, i]));
+    const plan = organizer.planFromItems(lastScan.items, store.settings, selected, overrides || {});
+    const batch = await runMoves(plan, 'manual');
+    // Learn from destinations picked by hand, so Inlet can suggest a rule next time.
+    const moved = new Set(batch.moves.map((m) => m.from));
+    const corrections = Object.entries(overrides || {})
+      .filter(([p]) => moved.has(p) && byPath.has(p))
+      .map(([p, toCat]) => { const it = byPath.get(p); return { name: it.name, host: it.host, fromCat: it.decision.categoryId, toCat, folderId: it.folderId }; });
+    if (corrections.length) {
+      suggest.record(store.learning, corrections);
+      store.save('learning');
+      broadcast();
+    }
+    return batch;
+  });
+
+  ipcMain.handle('suggestions:apply', async (_e, id) => {
+    const s = suggest.suggestions(store.learning, store.settings).find((x) => x.id === id);
+    if (!s) return { error: 'That suggestion is no longer available.' };
+    const patch = suggest.applySuggestion(store.settings, s);
+    const previous = Object.fromEntries(Object.keys(patch).map((k) => [k, store.settings[k]])); // lets the UI undo it
+    const prev = store.settings;
+    store.updateSettings(patch);
+    afterSettingsChange(prev);
+    await rescan();
+    return { state: state(), previous, title: s.title };
+  });
+  ipcMain.handle('suggestions:dismiss', (_e, id) => {
+    store.learning.dismissed = [...new Set([...(store.learning.dismissed || []), id])];
+    store.save('learning');
+    broadcast();
+    return state();
+  });
+
+  ipcMain.handle('history:get', () => store.history.batches);
+  ipcMain.handle('history:undo', (_e, { batchId, moveId }) => undoBatch(batchId, moveId));
+  ipcMain.handle('history:undoLast', () => undoLast());
+  ipcMain.handle('history:clear', async () => {
+    await emptyHolding(); // removed files can't be undone without history, so hand them to the Trash
+    store.clearHistory();
+    broadcast();
+    return true;
+  });
+
+  ipcMain.handle('rule:test', async (_e, rule) => {
+    // A content condition that isn't saved yet: read the text now (cached per file version).
+    if ((rule.conditions || []).some((c) => c.field === 'content' && String(c.value ?? '').trim())) {
+      await Promise.all(lastScan.items.filter((it) => it.text === undefined && spotlight.canReadText(it))
+        .map(async (it) => { it.text = await spotlight.extractText(it); }));
+    }
+    const hits = lastScan.items.filter((it) => (!rule.folders || !rule.folders.length || rule.folders.includes(it.folderId))
+      && ruleMatches({ ...rule, enabled: true }, it));
+    const example = hits[0] || lastScan.items[0];
+    return {
+      count: hits.length,
+      sample: hits.slice(0, 5).map((h) => h.name),
+      renameExample: rule.rename && example ? { from: example.name, to: renderName(rule.rename, example) || example.name } : null,
+    };
+  });
+
+  // ----- cleanup -----
+  ipcMain.handle('cleanup:stale', async (_e, days) => {
+    const files = await cleanup.findStale(folders.eachFolderSettings(store.settings), days || store.settings.staleDays);
+    return files.map(({ name, path: p, size, lastUsedMs, opened }) => ({ name, path: p, size, lastUsedMs, opened, folder: folders.whereLabel(store.settings, p) }));
+  });
+
+  ipcMain.handle('cleanup:duplicates', async () => {
+    const groups = await cleanup.findDuplicates(folders.eachFolderSettings(store.settings));
+    return groups.map((g) => ({
+      hash: g.hash,
+      size: g.size,
+      files: g.files.map(({ name, path: p, addedMs }) => ({ name, path: p, addedMs, folder: folders.whereLabel(store.settings, p) })),
+    }));
+  });
+
+  ipcMain.handle('cleanup:apply', async (_e, { action, paths, source }) => {
+    const valid = (paths || []).filter(isManagedPath);
+    const stamp = new Date();
+    const reason = source === 'duplicates' ? 'Duplicate' : 'Not used in a while';
+    const plan = valid.map((p) => (action === 'archive'
+      ? { path: p, dest: path.join(store.settings.watchDir, OLD_FILES_FOLDER, String(stamp.getFullYear())), categoryId: 'old', reason }
+      : { path: p, dest: path.join(cleanup.holdingDir(folders.folderSettings(store.settings, folders.folderFor(store.settings, p))), stamp.toISOString().slice(0, 10)), categoryId: 'removed', kind: 'remove', reason }));
+    return runMoves(plan, 'cleanup');
+  });
+
+  ipcMain.handle('holding:empty', () => emptyHolding());
+
+  // ----- rules: export / import / sync -----
+  const iCloudFolder = () => {
+    const icloud = path.join(app.getPath('home'), 'Library', 'Mobile Documents', 'com~apple~CloudDocs');
+    return fs.existsSync(icloud) ? path.join(icloud, 'Inlet') : null;
+  };
+  ipcMain.handle('config:export', async () => {
+    const res = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath('desktop'), 'Inlet Rules.json'), filters: [{ name: 'Inlet rules', extensions: ['json'] }] });
+    if (res.canceled || !res.filePath) return { canceled: true };
+    portable.writeFile(res.filePath, store.settings, APP_VERSION, Date.now());
+    return { path: res.filePath };
+  });
+  ipcMain.handle('config:importPick', async () => {
+    const res = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'Inlet rules', extensions: ['json'] }] });
+    if (res.canceled || !res.filePaths[0]) return { canceled: true };
+    const parsed = portable.readFile(res.filePaths[0]);
+    return parsed.error ? { error: parsed.error } : { path: res.filePaths[0], summary: parsed.summary };
+  });
+  ipcMain.handle('config:importApply', async (_e, file) => {
+    const parsed = portable.readFile(file);
+    if (parsed.error) return { error: parsed.error };
+    const prev = store.settings;
+    const previous = Object.fromEntries(portable.PORTABLE_KEYS.map((k) => [k, prev[k]]));
+    store.updateSettings(parsed.settings);
+    afterSettingsChange(prev);
+    await rescan();
+    return { state: state(), previous };
+  });
+  ipcMain.handle('sync:pick', async () => {
+    const res = await dialog.showOpenDialog(win, {
+      message: 'Choose a folder that syncs between your Macs, like iCloud Drive. Inlet keeps an “Inlet Rules.json” file there.',
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: iCloudFolder() || app.getPath('documents'),
+    });
+    if (res.canceled || !res.filePaths[0]) return { canceled: true };
+    const file = path.join(res.filePaths[0], 'Inlet Rules.json');
+    if (!fs.existsSync(file)) return { path: file, exists: false };
+    const parsed = portable.readFile(file);
+    return { path: file, exists: true, error: parsed.error, summary: parsed.summary, updatedAt: parsed.updatedAt };
+  });
+  ipcMain.handle('sync:set', async (_e, { file, prefer }) => {
+    if (!file) {
+      store.updateSettings({ syncFile: '', syncError: '' });
+      watchSyncFile();
+      return state();
+    }
+    store.updateSettings({ syncFile: file, syncError: '', syncUpdatedAt: 0 });
+    if (prefer === 'file') await readSyncFile(); // adopt the rules already there
+    else scheduleSyncWrite(); // this Mac's rules become the shared ones
+    watchSyncFile();
+    return state();
+  });
+  ipcMain.handle('whatsnew:seen', () => { store.updateSettings({ lastSeenVersion: APP_VERSION }); return state(); });
+
+  // ----- watched folders -----
+  const afterFolderChange = async () => { applyMode(); await rescan(); return state(); };
+  ipcMain.handle('folders:add', async (_e, p) => {
+    const error = folders.validateNewFolder(store.settings, p);
+    if (error) return { error };
+    store.updateSettings({ extraFolders: [...(store.settings.extraFolders || []), folders.newFolder(p)] });
+    return { state: await afterFolderChange() };
+  });
+  ipcMain.handle('folders:update', async (_e, { id, patch }) => {
+    const allowed = {};
+    if ('enabled' in patch) allowed.enabled = !!patch.enabled;
+    if (['self', 'primary'].includes(patch.sortInto)) allowed.sortInto = patch.sortInto;
+    if (['inherit', 'auto', 'manual'].includes(patch.mode)) {
+      allowed.mode = patch.mode;
+      allowed.autoSince = Date.now(); // only files arriving from now on are auto-sorted
+    }
+    // Re-enabling counts as a fresh start for auto mode, so old files there aren't swept up.
+    if (allowed.enabled) allowed.addedAt = Date.now();
+    store.updateSettings({ extraFolders: (store.settings.extraFolders || []).map((f) => (f.id === id ? { ...f, ...allowed } : f)) });
+    return afterFolderChange();
+  });
+  ipcMain.handle('folders:remove', async (_e, id) => {
+    store.updateSettings({ extraFolders: (store.settings.extraFolders || []).filter((f) => f.id !== id) });
+    return afterFolderChange();
+  });
+  ipcMain.handle('folders:suggest', async () => {
+    const out = [];
+    const desktop = app.getPath('desktop');
+    if (!folders.validateNewFolder(store.settings, desktop)) out.push({ path: desktop, label: 'Desktop', why: 'Where screenshots land by default' });
+    const shots = await new Promise((resolve) => require('child_process').execFile('defaults', ['read', 'com.apple.screencapture', 'location'],
+      { encoding: 'utf8' }, (err, stdout) => resolve(err ? null : stdout.trim())));
+    const shotsPath = shots && path.resolve(shots.replace(/^~/, app.getPath('home')));
+    if (shotsPath && shotsPath !== desktop && !folders.validateNewFolder(store.settings, shotsPath)) {
+      out.push({ path: shotsPath, label: path.basename(shotsPath), why: 'Your screenshots folder' });
+    }
+    return out;
+  });
+
+  // ----- files -----
+  ipcMain.handle('file:icon', async (_e, p) => {
+    if (iconCache.has(p)) return iconCache.get(p);
+    let url = null;
+    const ext = path.extname(p).slice(1).toLowerCase();
+    try {
+      if (THUMB_EXT.has(ext)) {
+        const img = await nativeImage.createThumbnailFromPath(p, { width: 80, height: 80 });
+        if (!img.isEmpty()) url = img.toDataURL();
+      }
+    } catch { /* fall back to the Finder icon */ }
+    if (!url) {
+      try { url = (await app.getFileIcon(p, { size: 'normal' })).toDataURL(); } catch { url = null; }
+    }
+    if (iconCache.size > 2000) iconCache.clear();
+    iconCache.set(p, url);
+    return url;
+  });
+
+  const knownPath = (p) => {
+    const r = path.resolve(p);
+    return !!folders.folderFor(store.settings, r)
+      || store.history.batches.some((b) => b.moves.some((m) => m.to === r || m.from === r));
+  };
+  ipcMain.handle('file:reveal', (_e, p) => { if (fs.existsSync(p)) shell.showItemInFolder(p); });
+  ipcMain.handle('file:open', (_e, p) => (knownPath(p) && fs.existsSync(p) ? shell.openPath(p) : 'Not allowed'));
+  ipcMain.handle('file:openTrash', () => shell.openPath(path.join(app.getPath('home'), '.Trash')));
+
+  ipcMain.handle('dialog:pickFolder', async (_e, defaultPath) => {
+    const res = await dialog.showOpenDialog(win, {
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: defaultPath || store.settings.watchDir,
+    });
+    return res.canceled ? null : res.filePaths[0];
+  });
+}
+
+// ---------- screenshots (dev aid: INLET_SCREENSHOTS=/some/dir npm start) ----------
+
+async function captureScreenshots(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  win.setSize(1180, 780);
+  win.showInactive();
+  await wait(1500);
+  for (const page of ['overview', 'organize', 'cleanup', 'rules', 'activity', 'settings']) {
+    win.webContents.send('navigate', page);
+    await wait(2000);
+    await win.webContents.capturePage(); // the first capture can return the previous frame
+    await wait(400);
+    const img = await win.webContents.capturePage();
+    fs.writeFileSync(path.join(dir, `${page}.png`), img.toPNG());
+  }
+  quitting = true;
+  app.quit();
+}
+
+// ---------- lifecycle ----------
+
+app.on('second-instance', () => showWindow());
+
+app.whenReady().then(async () => {
+  store = new Store(DATA_DIR);
+  if (env('WATCH_DIR')) store.updateSettings({ watchDir: env('WATCH_DIR') });
+  // Removed files from the Tidy days live in ".Tidy Removed"; move them (and their undo history) across.
+  if (cleanup.migrateLegacyHolding(folders.eachFolderSettings(store.settings), store.history.batches)) store.save('history');
+
+
+  registerIpc();
+  buildMenu();
+  createWindow();
+  if (env('SCREENSHOTS')) {
+    win.webContents.on('console-message', (e) => console.log('[renderer]', e.message || e));
+    win.webContents.once('did-finish-load', () => captureScreenshots(env('SCREENSHOTS')));
+  }
+  tray = new TrayController({
+    getSettings: () => store.settings,
+    getUnsorted: () => lastScan.items.length,
+    getUndoable: undoSummary,
+    setMode: async (mode) => {
+      store.updateSettings(mode === 'auto' ? { mode, autoSince: Date.now() } : { mode });
+      applyMode();
+      broadcast();
+    },
+    tidyNow: async () => {
+      const batch = await tidyAll('manual');
+      notifyMoves(batch.moves, 'Tidied Downloads');
+    },
+    undoLast: async () => {
+      const res = await undoLast();
+      if (res.restored.length && Notification.isSupported()) {
+        new Notification({ title: 'Undone', body: `Put ${res.restored.length} file${res.restored.length === 1 ? '' : 's'} back`, silent: true }).show();
+      }
+    },
+    show: showWindow,
+    quit: () => { quitting = true; app.quit(); },
+  });
+
+  // Upgrading from a version before release notes existed: show what's new since 1.0.
+  if (store.settings.onboarded && !store.settings.lastSeenVersion) store.updateSettings({ lastSeenVersion: '1.0.0' });
+  applyMode();
+  applySystemSettings();
+  await rescan();
+  await purgeExpired();
+  watchSyncFile();
+  await readSyncFile();
+  setInterval(rescan, 5 * 60 * 1000);
+  setInterval(tickSchedule, 30 * 1000);
+  setInterval(purgeExpired, 60 * 60 * 1000);
+  tickSchedule();
+});
+
+app.on('activate', () => showWindow());
+app.on('before-quit', () => {
+  quitting = true;
+  if (store) store.flush();
+  stopWatchers();
+  if (syncWatched) fs.unwatchFile(syncWatched);
+});
+app.on('window-all-closed', () => { /* stay alive in the menu bar */ });

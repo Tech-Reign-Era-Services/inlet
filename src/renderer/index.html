@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>Inlet</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="tour.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="sidebar-drag"></div>
+    <div class="brand">
+      <div class="brand-mark" id="brand-mark"></div>
+      <div>
+        <div class="brand-name">Inlet</div>
+        <div class="brand-sub">Downloads organizer</div>
+      </div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidebar-foot" id="mode-card"></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title"></h1>
+        <p id="page-sub" class="muted"></p>
+      </div>
+      <div class="topbar-actions" id="page-actions"></div>
+    </header>
+    <section class="content" id="content"></section>
+  </main>
+
+  <div class="toast-host" id="toasts"></div>
+  <div class="modal-host" id="modal"></div>
+
+  <script src="icons.js"></script>
+  <script src="tips.js"></script>
+  <script src="tour.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
