@@ -15,7 +15,7 @@ const portable = require('./portable');
 const changelog = require('./changelog');
 const provenance = require('./provenance');
 const { Ledger, summary: originSummary } = require('./ledger');
-const { classify, ruleMatches, renderName, OLD_FILES_FOLDER } = require('./classifier');
+const { classify, ruleMatches, renderName, reservedNames, OLD_FILES_FOLDER } = require('./classifier');
 const { TrayController } = require('./tray');
 
 app.setName('Inlet');
@@ -111,6 +111,9 @@ async function rescan() {
       // Files Inlet sorted that you dragged back out: show them, but don't tidy them by default.
       for (const it of lastScan.items) if (finder.returnedMove(store.history.batches, it)) it.returned = true;
       await recordFiles(lastScan.items);
+      // A file just unzipped only gets its archive's website when it's recorded, after it was classified.
+      // Scan once more so website rules (and the plan shown in Organize) use it. Converges: next time it has a source.
+      if (lastScan.items.some((it) => !it.sources.length && knownSources(it.ino, it.size).length)) scanAgain = true;
       for (const it of lastScan.items) it.origin = ledger ? originSummary(ledger.get(it.ino, it.size)) : null;
       await learnFromFinder();
       scanId++;
@@ -177,9 +180,11 @@ async function tidyAll(trigger) {
 async function onArrival(fullPath, folderId) {
   const folder = folders.watchedFolders(store.settings).find((f) => f.id === folderId);
   if (!folder) return;
-  const info = await organizer.describe(fullPath, { knownSources });
+  let info = await organizer.describe(fullPath, { knownSources });
   if (!info) return;
   await recordFiles([info]);
+  // Unzipped files learn their archive's website only now, as they're recorded: describe again so rules see it.
+  if (!info.sources.length && knownSources(info.ino, info.size).length) info = (await organizer.describe(fullPath, { knownSources })) || info;
   if (folders.effectiveMode(store.settings, folder) === 'auto') await autoSort(info, folders.folderSettings(store.settings, folder));
 }
 
@@ -306,8 +311,10 @@ async function backfillLedger() {
       try { top = await fs.promises.readdir(fs_.watchDir, { withFileTypes: true }); } catch { continue; }
       const files = await cleanup.collectFiles(fs_);
       // Loose folders too (often unzipped downloads): their quarantine id links them to the archive's source.
+      // Not Inlet's own folders (Images, Documents, Old Downloads…): they aren't downloads.
+      const reserved = reservedNames(fs_);
       for (const d of top) {
-        if (!d.isDirectory() || d.name.startsWith('.')) continue;
+        if (!d.isDirectory() || d.name.startsWith('.') || reserved.has(d.name.toLowerCase())) continue;
         const p = path.join(fs_.watchDir, d.name);
         try {
           const st = await fs.promises.lstat(p);
@@ -680,7 +687,11 @@ function registerIpc() {
   ipcMain.handle('ledger:export', async () => {
     const res = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath('desktop'), 'Inlet Download History.json'), filters: [{ name: 'JSON', extensions: ['json'] }] });
     if (res.canceled || !res.filePath) return { canceled: true };
-    fs.writeFileSync(res.filePath, JSON.stringify({ app: 'Inlet', exportedAt: new Date().toISOString(), files: ledger.toJSON() }, null, 2));
+    try {
+      fs.writeFileSync(res.filePath, JSON.stringify({ app: 'Inlet', exportedAt: new Date().toISOString(), files: ledger.toJSON() }, null, 2));
+    } catch (err) {
+      return { error: `Couldn’t save the file: ${err.message}` }; // read-only folder, disk full…
+    }
     return { path: res.filePath };
   });
   ipcMain.handle('ledger:clear', async () => {

@@ -1203,7 +1203,7 @@ function ledgerRows() {
     h('div', { class: 'setting' },
       h('div', { class: 't' }, h('div', { class: 'label' }, 'Your download history'), h('div', { class: 'desc' }, 'Save a copy, or forget everything Inlet has recorded. Your files aren’t touched.')),
       h('div', { class: 'control' },
-        button('Export…', async () => { const r = await api.exportLedger(); if (r.path) toast(`Saved ${r.path.split('/').pop()}`); }, { cls: 'sm', disabled: !L || !L.files }),
+        button('Export…', async () => { const r = await api.exportLedger(); if (r.error) toast(r.error, { error: true }); else if (r.path) toast(`Saved ${r.path.split('/').pop()}`); }, { cls: 'sm', disabled: !L || !L.files }),
         button('Clear…', () => openModal({
           title: 'Forget where your files came from?',
           sub: 'Inlet deletes its download history. Your files stay where they are. Sources macOS still has will be noted again as Inlet sees files.',
