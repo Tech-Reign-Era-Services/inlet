@@ -103,6 +103,17 @@ Inlet is Electron with a plain HTML/CSS/JS interface (no framework) and no runti
 
 Settings and history live in `~/Library/Application Support/Inlet/`. [docs/PLAN.md](docs/PLAN.md) covers the design and roadmap.
 
+## Contributing
+
+Bug reports, ideas and pull requests are all welcome.
+
+- **Questions or ideas:** [Discussions](https://github.com/Tech-Reign-Era-Services/inlet/discussions)
+- **Bugs and feature requests:** [Issues](https://github.com/Tech-Reign-Era-Services/inlet/issues/new/choose)
+- **Code:** read [CONTRIBUTING.md](CONTRIBUTING.md) first. It covers setup, the safety ground rules, and how pull requests are reviewed. Look for [`good first issue`](https://github.com/Tech-Reign-Era-Services/inlet/labels/good%20first%20issue) to get started.
+- **Security problems:** report them privately, as described in [SECURITY.md](SECURITY.md).
+
+Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Releasing (maintainers)
 
 1. Bump `version` in `package.json` and add an entry to `src/main/changelog.js` (it's shown in the app's "What's new" window).

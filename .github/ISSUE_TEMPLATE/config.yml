@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and help
+    url: https://github.com/Tech-Reign-Era-Services/inlet/discussions/categories/q-a
+    about: Ask how to do something, or get help setting up Inlet.
+  - name: Ideas
+    url: https://github.com/Tech-Reign-Era-Services/inlet/discussions/categories/ideas
+    about: Share an idea and see what others think before it becomes a feature request.
+  - name: Report a security problem
+    url: https://github.com/Tech-Reign-Era-Services/inlet/security/advisories/new
+    about: Privately report anything that could delete, lose or expose files.

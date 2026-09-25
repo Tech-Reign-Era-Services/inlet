@@ -1,0 +1,65 @@
+name: Bug report
+description: Something in Inlet doesn't work the way it should.
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+        **Security problems** (Inlet deleting or losing files, or touching files it shouldn't): please [report them privately](https://github.com/Tech-Reign-Era-Services/inlet/security/advisories/new) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: I turned on Auto mode and downloaded a PDF. I expected it to go to Documents, but it stayed in Downloads.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Inlet → Settings
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Inlet version
+      description: At the bottom of Settings, e.g. "Inlet 1.5.1".
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      description: Apple menu → About This Mac.
+      placeholder: macOS 15.3
+    validations:
+      required: true
+  - type: dropdown
+    id: chip
+    attributes:
+      label: Mac type
+      options:
+        - Apple silicon (M1, M2, M3, M4…)
+        - Intel
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install Inlet?
+      options:
+        - DMG from GitHub Releases
+        - Built it myself from source
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots help a lot. Please blur any file names you don't want to share.

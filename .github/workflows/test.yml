@@ -1,0 +1,25 @@
+# Runs the test suite on every pull request and on pushes to main.
+# macOS runners, because Inlet relies on macOS tools (Spotlight's mdls/mdimport, FSEvents).
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Check the interface scripts parse
+        run: for f in src/renderer/*.js; do node -e "new Function(require('fs').readFileSync('$f','utf8'))" || exit 1; done
