@@ -1198,7 +1198,7 @@ function ledgerRows() {
         on && status && h('div', { class: 'desc', style: { marginTop: '4px' } }, status)),
       h('div', { class: 'control' }, toggle(on, (v) => saveSettings({ ledgerEnabled: v }), 'Remember where files came from'))),
     on && h('div', { class: 'setting' },
-      h('div', { class: 't' }, h('div', { class: 'label' }, 'Keep it for'), h('div', { class: 'desc' }, 'Older records are forgotten automatically.')),
+      h('div', { class: 't' }, h('div', { class: 'label' }, 'Keep it for'), h('div', { class: 'desc' }, 'Each record is forgotten this long after Inlet made it, however old the download itself is.')),
       h('div', { class: 'control' }, select([['365', '1 year'], ['730', '2 years'], ['1825', '5 years'], ['0', 'Forever']], String(s.ledgerKeepDays ?? 730), (v) => saveSettings({ ledgerKeepDays: Number(v) })))),
     h('div', { class: 'setting' },
       h('div', { class: 't' }, h('div', { class: 'label' }, 'Your download history'), h('div', { class: 'desc' }, 'Save a copy, or forget everything Inlet has recorded. Your files aren’t touched.')),

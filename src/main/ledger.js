@@ -144,19 +144,25 @@ class Ledger {
     return this.get(file.ino, file.size);
   }
 
-  /** Inlet moved or renamed a file: keep the path current. */
-  moved(ino, size, newPath) {
+  /**
+   * Inlet moved or renamed a file: keep the path current. `newIno` is the inode at the new path, which
+   * differs from the old one when the move crossed disks (a copy, then delete).
+   */
+  moved(ino, size, newPath, newIno = ino) {
     const e = this.get(ino, size);
-    if (e && e.path !== newPath) this.write({ ...e, path: newPath, name: path.basename(newPath), seenAt: Date.now() });
+    if (e && (e.path !== newPath || e.ino !== newIno)) this.write({ ...e, ino: newIno, path: newPath, name: path.basename(newPath), seenAt: Date.now() });
   }
 
-  /** Forget records older than `days` (0 = keep forever). */
+  /**
+   * Forget records Inlet made more than `days` ago (0 = keep forever). Counted from when Inlet recorded the
+   * file, not when it was downloaded: an old download recorded today is exactly what the ledger is for.
+   */
   prune(days, now = Date.now()) {
     if (!days) return 0;
     const cutoff = now - days * 86400000;
     let n = 0;
     for (const e of [...this.entries.values()]) {
-      if ((e.downloadedAt || e.recordedAt) < cutoff) { this.drop(e.id); n++; }
+      if (e.recordedAt < cutoff) { this.drop(e.id); n++; }
     }
     if (n) this.compact();
     return n;

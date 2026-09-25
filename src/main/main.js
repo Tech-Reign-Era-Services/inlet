@@ -116,6 +116,7 @@ async function rescan() {
       scanId++;
     } while (scanAgain);
     broadcast();
+    if (backfillArmed && backfillPending()) backfillLedger(); // e.g. Downloads access was just granted
     return lastScan;
   })();
   try { return await scanning; } finally { scanning = null; }
@@ -156,7 +157,8 @@ function notifyMoves(moves, title) {
 
 async function runMoves(plan, trigger) {
   const batch = await organizer.execute(plan, trigger);
-  for (const m of batch.moves) if (m.ino && ledger) ledger.moved(m.ino, m.size, m.to);
+  // The ledger knows the file by its inode before the move; a move across disks gives it a new one.
+  for (const m of batch.moves) if (m.ino && ledger) ledger.moved(m.fromIno || m.ino, m.size, m.to, m.ino);
   const saved = store.addBatch(batch);
   if (trigger === 'auto') notifyMoves(batch.moves);
   if (trigger === 'scheduled') notifyMoves(batch.moves, 'Scheduled tidy');
@@ -200,7 +202,13 @@ async function undoBatch(batchId, moveId) {
   // Files you've since moved yourself aren't Inlet's to put back.
   const moves = (moveId ? batch.moves.filter((m) => m.id === moveId) : batch.moves).filter((m) => !m.userMoved);
   const res = await organizer.undo(moves);
-  for (const m of moves) if (m.undone && m.ino && ledger) ledger.moved(m.ino, m.size, m.from);
+  const restored = new Set(res.restored);
+  for (const m of moves) {
+    if (!restored.has(m.from) || !m.ino || !ledger) continue;
+    let back = m.ino; // putting it back across disks copies it again, so look up where it landed
+    try { back = (await fs.promises.lstat(m.from)).ino; } catch { /* gone again; keep the old key */ }
+    ledger.moved(m.ino, m.size, m.from, back);
+  }
   for (const w of watchers.values()) w.suppress(res.restored); // don't let auto mode immediately re-sort what the user just restored
   store.save('history');
   await rescan();
@@ -278,26 +286,39 @@ async function recordFiles(infos) {
 
 /** First run (and each newly added folder): remember the files already there, while macOS still has their origin. */
 let backfilling = false;
+let backfillArmed = false; // set once startup is done, so rescans don't start it earlier
+/** A folder that hasn't been backfilled yet but scanned fine just now. */
+function backfillPending() {
+  if (!ledger || backfilling || store.settings.ledgerEnabled === false) return false;
+  const done = store.settings.ledgerBackfilled || {};
+  const failed = new Set((lastScan.errors || []).map((e) => e.folderId));
+  return folders.eachFolderSettings(store.settings).some((f) => !done[f.folderId] && !failed.has(f.folderId));
+}
 async function backfillLedger() {
   if (!ledger || backfilling || store.settings.ledgerEnabled === false) return;
   backfilling = true;
   try {
+    let recorded = false;
     for (const fs_ of folders.eachFolderSettings(store.settings)) {
       if ((store.settings.ledgerBackfilled || {})[fs_.folderId]) continue;
+      // Can't read it yet (no Downloads permission, disk not mounted): don't mark it done; a later scan retries.
+      let top;
+      try { top = await fs.promises.readdir(fs_.watchDir, { withFileTypes: true }); } catch { continue; }
       const files = await cleanup.collectFiles(fs_);
       // Loose folders too (often unzipped downloads): their quarantine id links them to the archive's source.
-      try {
-        for (const d of await fs.promises.readdir(fs_.watchDir, { withFileTypes: true })) {
-          if (!d.isDirectory() || d.name.startsWith('.')) continue;
-          const p = path.join(fs_.watchDir, d.name);
+      for (const d of top) {
+        if (!d.isDirectory() || d.name.startsWith('.')) continue;
+        const p = path.join(fs_.watchDir, d.name);
+        try {
           const st = await fs.promises.lstat(p);
           files.push({ name: d.name, path: p, ino: st.ino, size: 0, isDir: true, addedMs: st.birthtimeMs || st.mtimeMs });
-        }
-      } catch { /* unreadable folder */ }
+        } catch { /* vanished */ }
+      }
       for (let i = 0; i < files.length; i += 200) await recordFiles(files.slice(i, i + 200));
       store.updateSettings({ ledgerBackfilled: { ...(store.settings.ledgerBackfilled || {}), [fs_.folderId]: Date.now() } });
+      recorded = true;
     }
-    await rescan();
+    if (recorded) await rescan();
   } finally {
     backfilling = false;
   }
@@ -540,11 +561,15 @@ function registerIpc() {
     if (patch.schedule) patch.schedule = { ...prev.schedule, ...patch.schedule, enabledAt: Date.now() };
     // Onboarding counts as having seen the current release notes.
     if (patch.onboarded && !prev.onboarded) patch.lastSeenVersion = APP_VERSION;
+    // Recording switched back on: files that arrived (or were sorted) while it was off need recording too.
+    const ledgerOn = patch.ledgerEnabled === true && prev.ledgerEnabled === false;
+    if (ledgerOn) patch.ledgerBackfilled = {};
     store.updateSettings(patch);
     afterSettingsChange(prev);
     applyMode();
     applySystemSettings();
     await rescan();
+    if (ledgerOn) backfillLedger();
     return state();
   });
 
@@ -862,7 +887,7 @@ app.whenReady().then(async () => {
   applySystemSettings();
   await rescan();
   await purgeExpired();
-  setTimeout(backfillLedger, 3000); // after the window is up; runs in the background
+  setTimeout(() => { backfillArmed = true; backfillLedger(); }, 3000); // after the window is up; runs in the background
   setInterval(() => { ledger.prune(store.settings.ledgerKeepDays); backfillLedger(); }, 6 * 60 * 60 * 1000);
   watchSyncFile();
   await readSyncFile();

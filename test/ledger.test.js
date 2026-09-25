@@ -95,16 +95,39 @@ test('ledger follows renames, survives restarts, and hands an archive’s source
   assert.equal(new Ledger(data).stats().files, 0);
 });
 
-test('prune forgets old records; moved() keeps paths current', () => {
+test('prune forgets records by when Inlet made them, not by download date; moved() keeps paths current', () => {
   const data = tmp('inlet-ledger-prune-');
   const ledger = new Ledger(data);
   const now = Date.now();
-  ledger.record({ path: '/x/old.pdf', ino: 1, size: 10 }, { urls: ['https://a.com'], host: 'a.com', downloadedAt: now - 800 * 86400000 });
-  ledger.record({ path: '/x/new.pdf', ino: 2, size: 10 }, { urls: [], host: '', downloadedAt: now - 5 * 86400000 });
+  const day = 86400000;
+  // Recorded long ago: forgotten.
+  ledger.record({ path: '/x/stale.pdf', ino: 1, size: 10 }, { urls: ['https://a.com'], host: 'a.com', downloadedAt: now - 900 * day }, now - 800 * day);
+  // A three-year-old download Inlet only just found: that's exactly what the ledger is for, so it stays.
+  ledger.record({ path: '/x/old-download.pdf', ino: 3, size: 10 }, { urls: ['https://b.com'], host: 'b.com', downloadedAt: now - 3 * 365 * day }, now);
+  ledger.record({ path: '/x/new.pdf', ino: 2, size: 10 }, { urls: [], host: '', downloadedAt: now - 5 * day }, now);
   assert.equal(ledger.prune(730, now), 1);
+  assert.equal(ledger.get(1, 10), null);
+  assert.equal(ledger.get(3, 10).host, 'b.com');
+  assert.equal(ledger.prune(730, now), 0); // stable: nothing is re-pruned on the next run
   assert.equal(ledger.prune(0, now), 0); // 0 = keep forever
   ledger.moved(2, 10, '/x/Documents/new.pdf');
   assert.equal(new Ledger(data).get(2, 10).path, '/x/Documents/new.pdf');
+});
+
+test('moved() follows a move across disks, where the file gets a new inode', () => {
+  const data = tmp('inlet-ledger-xdev-');
+  const ledger = new Ledger(data);
+  ledger.record({ path: '/Users/me/Downloads/talk.mp4', ino: 100, size: 50 }, { urls: ['https://vimeo.com/1'], host: 'vimeo.com' });
+  ledger.moved(100, 50, '/Volumes/Archive/Videos/talk.mp4', 900);
+  assert.equal(ledger.get(100, 50), null); // the old inode no longer points at it
+  assert.equal(ledger.get(900, 50).path, '/Volumes/Archive/Videos/talk.mp4');
+  assert.equal(ledger.get(900, 50).host, 'vimeo.com');
+  // Undo copies it back across again: another new inode.
+  ledger.moved(900, 50, '/Users/me/Downloads/talk.mp4', 101);
+  const reloaded = new Ledger(data);
+  assert.equal(reloaded.get(101, 50).host, 'vimeo.com');
+  assert.equal(reloaded.get(900, 50), null);
+  assert.equal(reloaded.stats().files, 1);
 });
 
 test('website rules use a remembered source when macOS has lost it', async () => {

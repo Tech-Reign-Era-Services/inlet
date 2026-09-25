@@ -145,6 +145,7 @@ async function execute(entries, trigger) {
         reason: entry.reason || '',
         kind: entry.kind || 'move', // 'move' | 'remove' (into the holding area)
         ino, // lets Inlet recognise the file if you later move it yourself in Finder
+        fromIno: st.ino, // differs from ino when the move crossed disks (copied, so a new inode)
         ...(entry.host && { host: entry.host }),
         ...(path.basename(to) !== path.basename(entry.path) && { originalName: path.basename(entry.path) }),
         undone: false,
