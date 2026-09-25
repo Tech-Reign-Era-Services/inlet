@@ -44,6 +44,7 @@ When Inlet first reads your Downloads folder, macOS asks for permission. Click *
 - **Scheduled tidy.** A daily sweep at a time you choose.
 - **More than Downloads.** Watch Desktop (where screenshots land) or any other folder. Each folder can have its own mode.
 - **Rules.** Match files by name, extension, size, age, the website they came from, their Finder kind, or even the **text inside** PDFs and documents. Rules can rename files as they move them, e.g. `scan0001.pdf` → `Documents/Scans/Scan 2026-09-25.pdf`.
+- **Remembers where files came from.** Inlet notes the website and app of each download as it arrives, and unzipped files keep their archive's source. macOS itself loses that. Hover over a file to see it. It all stays on your Mac.
 - **It learns.** Change where Inlet puts a file (in the app or by dragging it in Finder) and it suggests a rule for next time. Drag a file back into Downloads and Inlet leaves it alone.
 - **Cleanup.** Find files you haven't opened in months, and duplicate files. Archive them, or remove them. Removed files wait 30 days in a hidden holding folder so you can undo, then go to the Trash.
 - **Your rules on every Mac.** Export and import your rules, or keep them in sync through a folder like iCloud Drive.

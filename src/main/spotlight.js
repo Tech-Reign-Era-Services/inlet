@@ -12,7 +12,7 @@ function mdlsBatch(attr, paths) {
   const chunks = [];
   for (let i = 0; i < paths.length; i += 200) chunks.push(paths.slice(i, i + 200));
   return Promise.all(chunks.map((chunk) => new Promise((resolve) => {
-    execFile('mdls', ['-name', attr, '-raw', '-nullMarker', '(null)', ...chunk],
+    execFile('/usr/bin/mdls', ['-name', attr, '-raw', '-nullMarker', '(null)', ...chunk],
       { encoding: 'utf8', timeout: 20000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
         if (err && !stdout) return resolve(chunk.map(() => null));
         const values = stdout.split('\0');
@@ -50,7 +50,7 @@ function extractText(file) {
   if (textCache.has(key)) return Promise.resolve(textCache.get(key));
   if (!isMac || !canReadText(file)) return Promise.resolve('');
   return new Promise((resolve) => {
-    execFile('mdimport', ['-t', '-d3', file.path], { encoding: 'utf8', timeout: 20000, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile('/usr/bin/mdimport', ['-t', '-d3', file.path], { encoding: 'utf8', timeout: 20000, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
       const out = `${stdout || ''}${stderr || ''}`; // mdimport writes its dump to stderr
       const m = out.match(/kMDItemTextContent = "((?:[^"\\]|\\.)*)"/);
       const text = m ? unescapeMdimport(m[1]).slice(0, MAX_TEXT_CHARS).toLowerCase() : '';

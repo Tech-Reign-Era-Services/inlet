@@ -74,6 +74,22 @@ function dayLabel(ms) {
   if (diff === 1) return 'Yesterday';
   return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 }
+/** "· 🌐 github.com" or "· via AirDrop", with the full story in a tooltip. */
+function originBits(origin, fallbackHost) {
+  const host = (origin && origin.host) || fallbackHost;
+  const app = origin && origin.app;
+  if (!host && !app) return null;
+  const when = origin && origin.downloadedAt
+    ? new Date(origin.downloadedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  const tip = [
+    host && `Downloaded from ${origin && origin.page ? origin.page : host}`,
+    app && `${host ? 'with' : 'Came via'} ${app}`,
+    when && `on ${when}`,
+    origin && origin.inheritedFrom && `(unzipped from ${origin.inheritedFrom})`,
+  ].filter(Boolean).join(' ');
+  return ['·', h('span', { class: 'host', title: tip }, icon(host ? 'globe' : 'inbox', 11), host || `via ${app}`)];
+}
+
 function fmtWhen(ms) {
   const d = new Date(ms); const today = new Date();
   const diff = Math.round((new Date(d.toDateString()) - new Date(today.toDateString())) / 86400000);
@@ -457,7 +473,7 @@ function renderOrganize() {
           h('div', { class: 'file-meta' },
             multiFolder() && [h('span', { class: 'host', title: 'Found in' }, icon('folder', 11), folderLabel(it.folderId)), '·'],
             h('span', {}, it.isDir ? 'Package' : fmtBytes(it.size)), '·', h('span', {}, fmtAgo(it.addedMs)),
-            it.host && ['·', h('span', { class: 'host', title: 'Downloaded from' }, icon('globe', 11), it.host)],
+            originBits(it.origin, it.host),
             it.newName && !S.overrides[it.path] && ['·', h('span', { class: 'host', title: 'Renamed by rule', style: { color: 'var(--accent)' } }, icon('edit', 11), it.newName)])),
         h('div', { class: `reason ${reason.startsWith('Rule') || S.overrides[it.path] ? 'custom' : ''}`, title: reason }, reason),
         select(options, current, (v) => {
@@ -797,7 +813,7 @@ function renderActivity() {
         live.length > 0 && button(live.length === b.moves.length ? 'Undo all' : `Undo ${live.length}`, () => undo(b.id), { cls: 'sm', iconName: 'undo', title: 'Put these files back where they were' })),
       h('div', { class: 'moves' }, shown.map((m) => h('div', { class: `move ${m.undone ? 'undone' : ''}` },
         h('span', { style: { color: cat(m.categoryId).color } }, icon(cat(m.categoryId).icon, 14)),
-        h('span', { class: 'name', title: `${m.from} → ${m.to}` }, m.name),
+        h('span', { class: 'name', title: `${m.from} → ${m.to}` }, m.name, m.host && h('span', { class: 'faint', style: { marginLeft: '6px', fontSize: '11.5px' } }, `from ${m.host}`)),
         h('span', { class: 'faint', style: { fontSize: '12px' } }, moveStatus(m, b)),
         h('span', { class: 'acts' },
           !m.purged && iconButton('reveal', 'Show in Finder', () => api.reveal(m.undone ? m.from : m.userMoved?.to || m.to)),
@@ -1095,6 +1111,7 @@ function renderSettings() {
           title: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][i],
           onclick: () => saveSettings({ schedule: { days: s.schedule.days.includes(i) ? s.schedule.days.filter((x) => x !== i) : [...s.schedule.days, i].sort() } }),
         }, d)))))),
+      h('div', {}, ...group('Download history', ...ledgerRows())),
       h('div', {}, ...group('Removed files',
         row('Keep removed files for', 'Files you remove in Cleanup wait in a hidden holding folder so you can undo. After this, they go to the macOS Trash.',
           select([['7', '7 days'], ['30', '30 days'], ['90', '90 days']], String(s.retentionDays), (v) => saveSettings({ retentionDays: Number(v) }))),
@@ -1165,6 +1182,34 @@ async function addFolder(p) {
   render();
   const f = S.st.folders[S.st.folders.length - 1];
   toast(S.st.settings.mode === 'auto' ? `Watching ${f.label} — new files there will be sorted` : `Added ${f.label} — its files now show in Organize`);
+}
+
+function ledgerRows() {
+  const s = S.st.settings;
+  const L = S.st.ledger;
+  const on = s.ledgerEnabled !== false;
+  const status = !L ? '' : L.files
+    ? `Remembering ${plural(L.files, 'file')}: ${L.withSource.toLocaleString()} with a website${L.inherited ? ` (${L.inherited.toLocaleString()} traced through the archive they were unzipped from)` : ''}, ${L.withApp.toLocaleString()} with the app that downloaded them.${L.backfilling ? ' Still reading existing files…' : ''}`
+    : (L.backfilling ? 'Reading the files already in your folders…' : 'Nothing remembered yet.');
+  return [
+    h('div', { class: 'setting' },
+      h('div', { class: 't' }, h('div', { class: 'label' }, 'Remember where files came from'),
+        h('div', { class: 'desc' }, 'macOS forgets which website a file came from when it’s unzipped or copied. Inlet notes it when the file arrives, so you can find and sort by it later. Stays on this Mac.'),
+        on && status && h('div', { class: 'desc', style: { marginTop: '4px' } }, status)),
+      h('div', { class: 'control' }, toggle(on, (v) => saveSettings({ ledgerEnabled: v }), 'Remember where files came from'))),
+    on && h('div', { class: 'setting' },
+      h('div', { class: 't' }, h('div', { class: 'label' }, 'Keep it for'), h('div', { class: 'desc' }, 'Each record is forgotten this long after Inlet made it, however old the download itself is.')),
+      h('div', { class: 'control' }, select([['365', '1 year'], ['730', '2 years'], ['1825', '5 years'], ['0', 'Forever']], String(s.ledgerKeepDays ?? 730), (v) => saveSettings({ ledgerKeepDays: Number(v) })))),
+    h('div', { class: 'setting' },
+      h('div', { class: 't' }, h('div', { class: 'label' }, 'Your download history'), h('div', { class: 'desc' }, 'Save a copy, or forget everything Inlet has recorded. Your files aren’t touched.')),
+      h('div', { class: 'control' },
+        button('Export…', async () => { const r = await api.exportLedger(); if (r.error) toast(r.error, { error: true }); else if (r.path) toast(`Saved ${r.path.split('/').pop()}`); }, { cls: 'sm', disabled: !L || !L.files }),
+        button('Clear…', () => openModal({
+          title: 'Forget where your files came from?',
+          sub: 'Inlet deletes its download history. Your files stay where they are. Sources macOS still has will be noted again as Inlet sees files.',
+          foot: [button('Cancel', closeModal, { cls: 'ghost' }), button('Forget', async () => { closeModal(); S.st = await api.clearLedger(); render(); toast('Download history cleared'); }, { cls: 'primary' })],
+        }), { cls: 'sm danger', disabled: !L || !L.files }))),
+  ];
 }
 
 function shareRows() {

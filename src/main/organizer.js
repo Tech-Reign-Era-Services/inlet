@@ -32,12 +32,16 @@ async function sourcesFor(p, mtimeMs) {
   return sourceCache.get(key);
 }
 
-/** Stat one entry and build the file-info object the classifier works with. Returns null if gone or a symlink. */
-async function describe(fullPath) {
+/**
+ * Stat one entry and build the file-info object the classifier works with. Returns null if gone or a symlink.
+ * opts.knownSources(ino, size, dev): sources Inlet remembers when macOS no longer has them (the provenance ledger).
+ */
+async function describe(fullPath, opts = {}) {
   let st;
   try { st = await fsp.lstat(fullPath); } catch { return null; }
   if (st.isSymbolicLink()) return null;
-  const sources = await sourcesFor(fullPath, st.mtimeMs);
+  let sources = await sourcesFor(fullPath, st.mtimeMs);
+  if (!sources.length && opts.knownSources) sources = opts.knownSources(st.ino, st.isDirectory() ? 0 : st.size, st.dev) || [];
   return {
     name: path.basename(fullPath),
     path: fullPath,
@@ -46,6 +50,7 @@ async function describe(fullPath) {
     mtimeMs: st.mtimeMs,
     addedMs: st.birthtimeMs || st.mtimeMs,
     ino: st.ino,
+    dev: st.dev, // inode numbers are only unique per disk
     sources,
     host: sources.length ? hostOf(sources[sources.length > 1 ? 1 : 0]) || hostOf(sources[0]) : '',
   };
@@ -65,7 +70,7 @@ async function enrich(infos, settings) {
 }
 
 /** Scan the watched folder and classify everything in it (a dry run — nothing moves). */
-async function scan(settings) {
+async function scan(settings, opts = {}) {
   const reserved = reservedNames(settings);
   let entries;
   try {
@@ -80,7 +85,7 @@ async function scan(settings) {
     if (reason) { if (reason !== 'hidden') skipped.push({ name: e.name, reason }); continue; }
     candidates.push(path.join(settings.watchDir, e.name));
   }
-  const infos = await enrich((await mapLimit(candidates, 12, describe)).filter(Boolean), settings);
+  const infos = await enrich((await mapLimit(candidates, 12, (p) => describe(p, opts))).filter(Boolean), settings);
   const items = [];
   for (const info of infos) {
     const decision = classify(info, settings, reserved);
@@ -130,7 +135,8 @@ async function execute(entries, trigger) {
       const to = await uniqueDest(entry.dest, entry.newName || path.basename(entry.path));
       await movePath(entry.path, to);
       let ino = null;
-      try { ino = (await fsp.lstat(to)).ino; } catch { /* ignore */ }
+      let dev = null;
+      try { ({ ino, dev } = await fsp.lstat(to)); } catch { /* ignore */ }
       batch.moves.push({
         id: crypto.randomUUID(),
         from: entry.path,
@@ -141,6 +147,9 @@ async function execute(entries, trigger) {
         reason: entry.reason || '',
         kind: entry.kind || 'move', // 'move' | 'remove' (into the holding area)
         ino, // lets Inlet recognise the file if you later move it yourself in Finder
+        fromIno: st.ino, // differs from ino when the move crossed disks (copied, so a new inode)
+        dev,
+        fromDev: st.dev,
         ...(entry.host && { host: entry.host }),
         ...(path.basename(to) !== path.basename(entry.path) && { originalName: path.basename(entry.path) }),
         undone: false,
