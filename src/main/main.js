@@ -297,7 +297,7 @@ function backfillPending() {
   if (!ledger || backfilling || store.settings.ledgerEnabled === false) return false;
   const done = store.settings.ledgerBackfilled || {};
   const failed = new Set((lastScan.errors || []).map((e) => e.folderId));
-  return folders.eachFolderSettings(store.settings).some((f) => !done[f.folderId] && !failed.has(f.folderId));
+  return folders.eachFolderSettings(store.settings).some((f) => !done[f.watchDir] && !failed.has(f.folderId));
 }
 async function backfillLedger() {
   if (!ledger || backfilling || store.settings.ledgerEnabled === false) return;
@@ -305,7 +305,8 @@ async function backfillLedger() {
   try {
     let recorded = false;
     for (const fs_ of folders.eachFolderSettings(store.settings)) {
-      if ((store.settings.ledgerBackfilled || {})[fs_.folderId]) continue;
+      // Keyed by path, not id: changing the main folder (always id 'primary') must backfill the new one.
+      if ((store.settings.ledgerBackfilled || {})[fs_.watchDir]) continue;
       // Can't read it yet (no Downloads permission, disk not mounted): don't mark it done; a later scan retries.
       let top;
       try { top = await fs.promises.readdir(fs_.watchDir, { withFileTypes: true }); } catch { continue; }
@@ -322,7 +323,7 @@ async function backfillLedger() {
         } catch { /* vanished */ }
       }
       for (let i = 0; i < files.length; i += 200) await recordFiles(files.slice(i, i + 200));
-      store.updateSettings({ ledgerBackfilled: { ...(store.settings.ledgerBackfilled || {}), [fs_.folderId]: Date.now() } });
+      store.updateSettings({ ledgerBackfilled: { ...(store.settings.ledgerBackfilled || {}), [fs_.watchDir]: Date.now() } });
       recorded = true;
     }
     if (recorded) await rescan();

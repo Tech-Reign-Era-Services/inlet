@@ -134,6 +134,21 @@ test('moved() follows a move across disks, where the file gets a new inode', () 
   assert.equal(reloaded.stats().files, 1);
 });
 
+test('keeps Mail senders and message links as sources, but not data: URLs', { skip: !mac }, async () => {
+  const dir = tmp('inlet-ledger-mail-');
+  const att = path.join(dir, 'invoice.pdf');
+  const blob = path.join(dir, 'pasted.png');
+  fs.writeFileSync(att, 'x');
+  fs.writeFileSync(blob, 'y');
+  markDownloaded(att, { urls: ['Jane Doe <jane@acme.com>', 'message:%3Cabc@acme.com%3E'], app: 'Mail', qid: 'Q-M' });
+  markDownloaded(blob, { urls: ['data:image/png;base64,iVBORw0KGgo=', 'https://notes.example.com/page'], qid: 'Q-B' });
+  const prov = await provenance.readMany([att, blob]);
+  assert.deepEqual(prov.get(att).urls, ['Jane Doe <jane@acme.com>', 'message:%3Cabc@acme.com%3E']); // a "source contains acme.com" rule matches these
+  assert.deepEqual(prov.get(blob).urls, ['https://notes.example.com/page']);
+  const { getSources } = require('../src/main/source');
+  assert.ok((await getSources(att)).some((u) => u.includes('acme.com')));
+});
+
 test('files on different disks with the same inode number get separate records', () => {
   const data = tmp('inlet-ledger-dev-');
   const ledger = new Ledger(data);

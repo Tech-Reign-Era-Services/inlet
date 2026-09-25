@@ -84,7 +84,7 @@ function defaultSettings() {
     staleDays: 90,
     ledgerEnabled: true, // remember where files came from
     ledgerKeepDays: 730, // 0 = forever
-    ledgerBackfilled: {}, // folder id → when its existing files were recorded
+    ledgerBackfilled: {}, // folder path → when its existing files were recorded (by path: the main folder's id never changes)
     syncFile: '', // optional shared rules file (e.g. in iCloud Drive)
     syncUpdatedAt: 0,
     lastSeenVersion: '',

@@ -144,9 +144,10 @@ async function readMany(paths) {
     for (const p of chunk) {
       const q = parseQuarantine(quarantine.get(p));
       const hex = wheres.get(p);
-      // Keep real web addresses only: some apps store whole data:/blob: URLs (megabytes) that name no website.
+      // Drop data:/blob: URLs: some apps store whole files that way (megabytes) and they name no source.
+      // Keep everything else: Mail stores the sender ("Jane <jane@acme.com>") and a message: link, and website rules match on them.
       const urls = hex
-        ? parseBplistStrings(Buffer.from(hex.replace(/[^0-9a-f]/gi, ''), 'hex')).filter((u) => /^(https?|ftp):/i.test(u)).map((u) => u.slice(0, 2048))
+        ? parseBplistStrings(Buffer.from(hex.replace(/[^0-9a-f]/gi, ''), 'hex')).filter((u) => u && !/^(data|blob):/i.test(u)).map((u) => u.slice(0, 2048))
         : [];
       if (!q && !urls.length) continue;
       const fileHost = hostOf(urls[0] || '');
