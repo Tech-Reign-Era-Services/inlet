@@ -47,7 +47,11 @@ test('reads provenance for many files in one go, including awkward names', { ski
   for (const f of [a, b, c]) fs.writeFileSync(f, 'x');
   markDownloaded(a, { urls: ['https://cdn.github.com/x.pdf', 'https://github.com/acme/repo'], qid: 'Q-A' });
   markDownloaded(b, { app: 'sharingd', qid: '' });
-  const m = await provenance.readMany([a, b, c]);
+  const d = path.join(dir, 'setup.dmg');
+  fs.writeFileSync(d, 'x');
+  markDownloaded(d, { app: 'Google Chrome', qid: 'Q-D' }); // xattr escapes the space when reading several files
+  const m = await provenance.readMany([a, b, c, d]);
+  assert.equal(m.get(d).app, 'Chrome');
   assert.equal(m.get(a).host, 'github.com'); // the page, not the CDN
   assert.equal(m.get(a).fileHost, 'cdn.github.com');
   assert.equal(m.get(a).app, 'Safari');

@@ -60,11 +60,14 @@ function xattrBatch(args, paths) {
           parts.get(current).push(line.trim());
         }
       }
-      for (const [p, chunks] of parts) out.set(p, chunks.join(' ').trim());
+      // In multi-file mode xattr escapes spaces and other bytes in text values ("Google\x20Chrome").
+      for (const [p, chunks] of parts) out.set(p, unescapeXattr(chunks.join(' ').trim()));
       resolve(out);
     });
   });
 }
+
+const unescapeXattr = (s) => s.replace(/\\x([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
 
 /**
  * Strings from a binary plist (kMDItemWhereFroms is an array of strings).
@@ -116,7 +119,7 @@ function parseBplistStrings(buf) {
 
 function parseQuarantine(value) {
   if (!value) return null;
-  const [flags, hexTime, agent, id] = value.split(';');
+  const [flags, hexTime, agent, id] = unescapeXattr(value).split(';');
   const secs = parseInt(hexTime, 16);
   return {
     app: appLabel(agent || ''),
@@ -162,4 +165,4 @@ async function readMany(paths) {
 
 const readOne = async (p) => (await readMany([p])).get(p) || null;
 
-module.exports = { readMany, readOne, parseBplistStrings, parseQuarantine, appLabel, hostOf };
+module.exports = { readMany, readOne, parseBplistStrings, parseQuarantine, appLabel, hostOf, unescapeXattr };

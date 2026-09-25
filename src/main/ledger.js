@@ -13,6 +13,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+const { appLabel, unescapeXattr } = require('./provenance');
+
 const FILE = 'ledger.jsonl';
 
 class Ledger {
@@ -35,10 +37,12 @@ class Ledger {
       this.lines++;
       try {
         const e = JSON.parse(line);
+        // Records written before 1.6.0 could hold app names still escaped by xattr ("Google\x20Chrome").
+        if (e.app && /\\x[0-9a-f]{2}/i.test(e.app)) { e.app = appLabel(unescapeXattr(e.app)); this.repaired = true; }
         if (e.deleted) this.drop(e.id); else this.index(e);
       } catch { /* skip a torn line */ }
     }
-    if (this.lines > this.entries.size * 2 + 200) this.compact();
+    if (this.repaired || this.lines > this.entries.size * 2 + 200) this.compact();
   }
 
   index(e) {
