@@ -72,6 +72,7 @@
     <nav class="nav-links" aria-label="Sections">
       <a href="#tidy">Tidy</a>
       <a href="#find">Find</a>
+      <a href="#shelf">Shelf</a>
       <a href="#safety">Safety</a>
       <a href="#install">Install</a>
       <a href="#faq">FAQ</a>
@@ -211,8 +212,38 @@
     </div>
   </section>
 
+  <!-- Shelf -->
+  <section class="section" id="shelf">
+    <div class="wrap">
+      <header class="section-head">
+        <p class="eyebrow">Shelf</p>
+        <h2>A drawer in your notch</h2>
+        <p>Drag files, text or links towards the notch and the Shelf opens to take them. Keep them there for a moment, then drag them out wherever they need to go: an email, an upload box, another folder.</p>
+      </header>
+
+      <figure class="loop-video">
+        <video muted loop playsinline preload="metadata" width="1920" height="1080" poster="assets/shelf-poster.webp" aria-label="A file dragged from Downloads towards the notch: the Shelf opens before it gets there and takes it. Space previews the invoice, then the file is dragged out into an upload box and the notch closes with the item kept." data-loop-video>
+          <source src="assets/shelf.webm" type="video/webm">
+          <source src="assets/shelf.mp4" type="video/mp4">
+          <img src="assets/shelf-poster.jpg" width="1920" height="1080" alt="The Shelf open under the notch with invoice-sept.pdf on it, and the invoice previewed after pressing Space.">
+        </video>
+        <button type="button" class="video-toggle" data-video-toggle aria-label="Pause video">
+          <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+          <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
+        </button>
+      </figure>
+
+      <ul class="points">
+        <li><strong>Opens as you drag,</strong> before you reach the notch, so there’s always room to drop. No notch? It sits in the middle of the menu bar.</li>
+        <li><strong>Drag out, or copy and paste:</strong> select items, press <kbd>⌘</kbd><kbd>C</kbd>, and <kbd>⌘</kbd><kbd>V</kbd> anywhere pastes the files themselves.</li>
+        <li><strong>Space to preview,</strong> just like in Finder, and <kbd>←</kbd> <kbd>→</kbd> to flip through.</li>
+        <li><strong>Files stay where they are.</strong> The Shelf only points to them. Hover over the notch or press <kbd>⌃</kbd><kbd>⌥</kbd><kbd>S</kbd> to open it.</li>
+      </ul>
+    </div>
+  </section>
+
   <!-- Source -->
-  <section class="section" id="source">
+  <section class="section section-tint" id="source">
     <div class="wrap split">
       <div>
         <p class="eyebrow">Remembers</p>
@@ -230,7 +261,7 @@
   </section>
 
   <!-- Features -->
-  <section class="section section-tint" id="features">
+  <section class="section" id="features">
     <div class="wrap">
       <header class="section-head">
         <p class="eyebrow">And more</p>
@@ -272,7 +303,7 @@
   </section>
 
   <!-- Safety -->
-  <section class="section" id="safety">
+  <section class="section section-tint" id="safety">
     <div class="wrap split split-reverse">
       <figure class="window">
         <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -293,7 +324,7 @@
   </section>
 
   <!-- Install -->
-  <section class="section section-tint" id="install">
+  <section class="section" id="install">
     <div class="wrap">
       <header class="section-head">
         <p class="eyebrow">Install</p>
@@ -330,7 +361,7 @@
   </section>
 
   <!-- FAQ -->
-  <section class="section" id="faq">
+  <section class="section section-tint" id="faq">
     <div class="wrap narrow">
       <header class="section-head">
         <p class="eyebrow">FAQ</p>

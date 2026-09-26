@@ -123,11 +123,10 @@
     }, { threshold: 0.4 }).observe(demo);
   }
 
-  // Hero video: respect reduced motion, pause off screen, and give people a pause button.
-  function heroVideo() {
-    const video = document.querySelector('[data-hero-video]');
-    const toggle = document.querySelector('[data-video-toggle]');
-    if (!video || !toggle) return;
+  // Looping videos (hero, Shelf): respect reduced motion, play only on screen, and give people a pause button.
+  function loopVideo(video) {
+    const toggle = video.parentElement.querySelector('[data-video-toggle]');
+    if (!toggle) return;
     let userPaused = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const sync = () => {
       toggle.classList.toggle('paused', video.paused);
@@ -147,7 +146,7 @@
   }
 
   loadRelease();
-  heroVideo();
+  document.querySelectorAll('[data-hero-video], [data-loop-video]').forEach(loopVideo);
   flagNonMac();
   navShadow();
   findDemo();
