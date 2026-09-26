@@ -2,6 +2,8 @@
 
 **A free, open-source Mac app that keeps your Downloads folder clean and finds any file you describe.**
 
+**[tech-reign-era-services.github.io/inlet](https://tech-reign-era-services.github.io/inlet/)**
+
 - **Tidy:** Inlet sorts downloads into folders (Images, Documents, Installers and more), either automatically as they finish or when you click one button.
 - **Find:** type what you remember, like *“pdfs from github last week”* or *“the contract I signed in July”*, and Inlet finds it. It even knows which website a file came from after macOS has forgotten.
 
