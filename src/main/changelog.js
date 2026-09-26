@@ -3,6 +3,18 @@
 // Shown in "What's new" after an update (newest first). Keep entries short and user-facing.
 module.exports = [
   {
+    version: '1.8.0',
+    title: 'The Shelf',
+    items: [
+      'A place at the top of your screen to keep things for a moment. Drop files, folders, text or links on the notch (or the middle of the menu bar on a Mac without one).',
+      'Then drag them out one at a time, or several at once, wherever they need to go. Or select them, press ⌘C, and ⌘V anywhere pastes the files themselves.',
+      'Hover over the notch to open the Shelf, or press ⌃⌥S from any app. With the Shelf open, ⌘V adds whatever you copied.',
+      'Press Space to preview an item with Quick Look, and ← → to flip through them, just like in Finder.',
+      'Files stay where they are: the Shelf only points to them. It keeps its contents when you quit, and you can turn it off in Settings.',
+      'Found something with Find? Select it and choose Add to Shelf.',
+    ],
+  },
+  {
     version: '1.7.0',
     title: 'Find files by describing them',
     items: [

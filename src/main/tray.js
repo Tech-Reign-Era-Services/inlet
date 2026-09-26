@@ -9,7 +9,7 @@ function iconPath() {
 }
 
 class TrayController {
-  /** actions: { getSettings, getUnsorted, getUndoable, setMode, tidyNow, undoLast, show, quit } */
+  /** actions: { getSettings, getUnsorted, getUndoable, setMode, tidyNow, undoLast, show, shelf, showShelf, quit } */
   constructor(actions) {
     this.actions = actions;
     const image = nativeImage.createFromPath(iconPath());
@@ -25,6 +25,7 @@ class TrayController {
     const undoable = this.actions.getUndoable();
     const undoWhat = { auto: 'Auto-Sort', scheduled: 'Scheduled Tidy', cleanup: 'Cleanup', gather: 'Gather' };
     const auto = mode === 'auto';
+    const shelf = this.actions.shelf();
     this.tray.setTitle(!auto && unsorted > 0 ? ` ${unsorted}` : '', { fontType: 'monospacedDigit' });
     this.tray.setContextMenu(Menu.buildFromTemplate([
       { label: auto ? 'Auto mode — sorting new downloads' : `Manual mode — ${unsorted || 'no'} unsorted file${unsorted === 1 ? '' : 's'}`, enabled: false },
@@ -37,6 +38,7 @@ class TrayController {
       },
       { label: 'Auto Mode', type: 'checkbox', checked: auto, click: (item) => this.actions.setMode(item.checked ? 'auto' : 'manual') },
       { type: 'separator' },
+      { label: shelf.count ? `Show Shelf (${shelf.count})` : 'Show Shelf', accelerator: shelf.shortcut, registerAccelerator: false, visible: shelf.on, click: () => this.actions.showShelf() },
       { label: 'Open Inlet…', click: () => this.actions.show('overview') },
       { label: 'Clean Up…', click: () => this.actions.show('cleanup') },
       { label: 'Activity…', click: () => this.actions.show('activity') },

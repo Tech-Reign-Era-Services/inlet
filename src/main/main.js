@@ -2,7 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, ipcMain, shell, dialog, Notification, nativeImage, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification, nativeImage, Menu, globalShortcut, clipboard } = require('electron');
 const { Store } = require('./store');
 const { Watcher } = require('./watcher');
 const organizer = require('./organizer');
@@ -19,6 +19,9 @@ const findSearch = require('./find/search');
 const { Ledger, summary: originSummary } = require('./ledger');
 const { classify, ruleMatches, renderName, reservedNames, OLD_FILES_FOLDER } = require('./classifier');
 const { TrayController } = require('./tray');
+const { Shelf } = require('./shelf');
+const { ShelfWindow } = require('./shelfWindow');
+const pasteboard = require('./pasteboard');
 
 app.setName('Inlet');
 // Dev overrides let you point Inlet at a sandbox folder instead of your real Downloads.
@@ -42,12 +45,15 @@ function migrateFromTidy() {
 // From package.json, not app.getVersion(): that returns Electron's version when launched unpackaged from a script.
 const APP_VERSION = require('../../package.json').version;
 const GATHER_FOLDER = 'Gathered'; // Find → "Gather into a folder" puts files in Downloads/Gathered/<name>
+const SHELF_SHORTCUT = 'Control+Option+S';
 if (!app.requestSingleInstanceLock()) app.quit();
 
 let store;
 let ledger; // where files came from (provenance ledger)
 const watchers = new Map(); // folder id → Watcher (auto mode only)
 let tray;
+let shelf; // what's on the Shelf
+const shelfWin = new ShelfWindow();
 let win = null;
 let quitting = false;
 let lastScan = { items: [], skipped: [], error: null };
@@ -85,6 +91,7 @@ function state() {
     lastUndoable: undoSummary(),
     holding,
     nextScheduled: nextScheduledRun(),
+    shelf: { count: shelf ? shelf.list().length : 0, shortcut: shelfShortcutOk ? '⌃⌥S' : '' },
     version: APP_VERSION,
   };
 }
@@ -480,6 +487,48 @@ async function emptyHolding() {
   await rescan();
 }
 
+// ---------- the Shelf ----------
+
+let shelfShortcutOk = false;
+
+/** Turn the Shelf and its shortcut on or off to match Settings. */
+function applyShelf() {
+  const on = store.settings.shelfEnabled !== false && process.platform === 'darwin' && !env('SCREENSHOTS');
+  if (on && !shelfWin.wanted) {
+    shelfWin.enable().then(() => { shelfWin.setCount(shelf.list().length); }).catch((err) => console.error('[shelf]', err.message));
+    try { shelfShortcutOk = globalShortcut.register(SHELF_SHORTCUT, () => shelfWin.toggle()); } catch { shelfShortcutOk = false; }
+  } else if (!on && shelfWin.wanted) {
+    shelfWin.disable();
+    if (shelfShortcutOk) globalShortcut.unregister(SHELF_SHORTCUT);
+    shelfShortcutOk = false;
+  }
+  if (tray) tray.refresh();
+}
+
+/** A text or link item as a .txt file, so Quick Look can show it. Kept in the temp folder, removed at quit. */
+const SHELF_TEXT_DIR = path.join(app.getPath('temp'), 'Inlet Shelf');
+async function shelfTextFile(it) {
+  const name = `${it.name.replace(/[/:\\]/g, '-').replace(/^\.+/, '').slice(0, 60).trim() || 'Text'}.txt`;
+  const file = path.join(SHELF_TEXT_DIR, it.id, name);
+  try {
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    await fs.promises.writeFile(file, it.text);
+    return file;
+  } catch { return null; }
+}
+
+/** After the Shelf's contents change: redraw it, resize the island, and update the main window. */
+function shelfChanged() {
+  shelfWin.send('shelf:items', shelf.list());
+  shelfWin.setCount(shelf.list().length);
+  broadcast();
+}
+
+function showShelf() {
+  if (!shelfWin.alive) return showWindow('settings');
+  shelfWin.setState('open', { focus: true });
+}
+
 // ---------- window & menu ----------
 
 function createWindow() {
@@ -554,6 +603,47 @@ function buildMenu() {
 const iconCache = new Map();
 const THUMB_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'tif', 'tiff', 'bmp', 'pdf', 'mp4', 'mov', 'm4v', 'svg', 'psd']);
 
+/**
+ * A thumbnail (images, PDFs, videos) or the Finder icon, as a data URL. anyKind asks Quick Look for every file,
+ * which draws folders and documents at full size (the Shelf's few big tiles); long lists stick to THUMB_EXT.
+ */
+async function fileIcon(p, size = 80, anyKind = false) {
+  const key = `${size}:${p}`;
+  if (iconCache.has(key)) return iconCache.get(key);
+  let url = null;
+  const ext = path.extname(p).slice(1).toLowerCase();
+  try {
+    if (anyKind || THUMB_EXT.has(ext)) {
+      const img = await nativeImage.createThumbnailFromPath(p, { width: size, height: size });
+      if (!img.isEmpty()) url = img.toDataURL();
+    }
+  } catch { /* fall back to the Finder icon */ }
+  if (!url) {
+    // 'normal' only: 'large' isn't supported on macOS (asking for it crashes Electron).
+    try { url = (await app.getFileIcon(p, { size: 'normal' })).toDataURL(); } catch { url = null; }
+  }
+  if (iconCache.size > 2000) iconCache.clear();
+  iconCache.set(key, url);
+  return url;
+}
+
+// startDrag throws on an empty icon, so fall back to the menu bar icon (always shipped) if the app icon is missing.
+let fallbackDragIcon = null;
+function dragIconFor(p) {
+  const cached = p && iconCache.get(`96:${p}`);
+  if (cached) {
+    const img = nativeImage.createFromDataURL(cached);
+    if (!img.isEmpty()) return img.resize({ width: 56 });
+  }
+  if (!fallbackDragIcon) {
+    const buildImage = (name) => nativeImage.createFromPath(path.join(__dirname, '..', '..', 'build', name));
+    fallbackDragIcon = buildImage('icon.png');
+    if (fallbackDragIcon.isEmpty()) fallbackDragIcon = buildImage('trayTemplate@2x.png');
+    if (!fallbackDragIcon.isEmpty()) fallbackDragIcon = fallbackDragIcon.resize({ width: 48, height: 48 });
+  }
+  return fallbackDragIcon;
+}
+
 /** Only let the renderer act on files Inlet manages: inside a watched folder, outside its holding area. */
 function isManagedPath(p) {
   const f = folders.folderFor(store.settings, p);
@@ -579,6 +669,7 @@ function registerIpc() {
     afterSettingsChange(prev);
     applyMode();
     applySystemSettings();
+    applyShelf();
     await rescan();
     if (ledgerOn) backfillLedger();
     return state();
@@ -590,6 +681,7 @@ function registerIpc() {
     afterSettingsChange(prev);
     applyMode();
     applySystemSettings();
+    applyShelf();
     await rescan();
     return state();
   });
@@ -797,23 +889,7 @@ function registerIpc() {
   });
 
   // ----- files -----
-  ipcMain.handle('file:icon', async (_e, p) => {
-    if (iconCache.has(p)) return iconCache.get(p);
-    let url = null;
-    const ext = path.extname(p).slice(1).toLowerCase();
-    try {
-      if (THUMB_EXT.has(ext)) {
-        const img = await nativeImage.createThumbnailFromPath(p, { width: 80, height: 80 });
-        if (!img.isEmpty()) url = img.toDataURL();
-      }
-    } catch { /* fall back to the Finder icon */ }
-    if (!url) {
-      try { url = (await app.getFileIcon(p, { size: 'normal' })).toDataURL(); } catch { url = null; }
-    }
-    if (iconCache.size > 2000) iconCache.clear();
-    iconCache.set(p, url);
-    return url;
-  });
+  ipcMain.handle('file:icon', (_e, p) => fileIcon(p));
 
   // ----- Find -----
   let findAllowed = new Set(); // paths shown in the latest Find results (the renderer may act on these)
@@ -840,14 +916,69 @@ function registerIpc() {
     return { ...batch, dest };
   });
   ipcMain.handle('find:preview', (_e, p) => { if (findAllowed.has(p) && win && !win.isDestroyed()) win.previewFile(p); });
-  // startDrag throws on an empty icon, so fall back to the menu bar icon (always shipped) if the app icon is missing.
-  const buildImage = (name) => nativeImage.createFromPath(path.join(__dirname, '..', '..', 'build', name));
-  let dragIcon = buildImage('icon.png');
-  if (dragIcon.isEmpty()) dragIcon = buildImage('trayTemplate@2x.png');
-  if (!dragIcon.isEmpty()) dragIcon = dragIcon.resize({ width: 48, height: 48 });
   ipcMain.on('find:drag', (e, p) => {
-    if (!findAllowed.has(p) || dragIcon.isEmpty()) return;
-    try { e.sender.startDrag({ file: p, icon: dragIcon }); } catch (err) { console.error('[find drag]', err.message); }
+    const icon = dragIconFor(null);
+    if (!findAllowed.has(p) || icon.isEmpty()) return;
+    try { e.sender.startDrag({ file: p, icon }); } catch (err) { console.error('[find drag]', err.message); }
+  });
+  ipcMain.handle('find:toShelf', (_e, paths) => {
+    const added = shelf.addFiles((paths || []).filter((p) => findAllowed.has(p)));
+    if (added.length) { shelfChanged(); shelfWin.flash(); }
+    return { added: added.length, enabled: shelfWin.wanted };
+  });
+
+  // ----- Shelf (only its own window may call these) -----
+  const fromShelf = (fn) => (e, ...args) => (shelfWin.owns(e.sender) ? fn(...args) : null);
+  const shelfFiles = (ids) => shelf.get(ids || []).filter((it) => it.kind === 'file' && fs.existsSync(it.path));
+  ipcMain.handle('shelf:items', fromShelf(() => { shelf.prune(); shelfWin.setCount(shelf.list().length); return shelf.list(); }));
+  ipcMain.handle('shelf:addFiles', fromShelf((paths) => { const n = shelf.addFiles(paths || []).length; if (n) shelfChanged(); return n; }));
+  ipcMain.handle('shelf:addText', fromShelf((text) => { const n = shelf.addText(text).length; if (n) shelfChanged(); return n; }));
+  ipcMain.handle('shelf:paste', fromShelf(async () => {
+    const files = await pasteboard.readFiles();
+    const n = files.length ? shelf.addFiles(files).length : shelf.addText(clipboard.readText()).length;
+    if (n) shelfChanged();
+    return n;
+  }));
+  ipcMain.handle('shelf:remove', fromShelf((ids) => { if (shelf.remove(ids || [])) shelfChanged(); }));
+  ipcMain.handle('shelf:clear', fromShelf(() => { shelf.clear(); shelfChanged(); }));
+  ipcMain.handle('shelf:copy', fromShelf(async (ids) => {
+    const items = shelf.get(ids || []);
+    const files = shelfFiles(ids);
+    // The clipboard holds files or text, not both: files win, as they're what the Shelf is mostly for.
+    if (files.length) return { count: (await pasteboard.copyFiles(files.map((it) => it.path))) ? files.length : 0, kind: 'files' };
+    const texts = items.filter((it) => it.kind !== 'file').map((it) => it.text);
+    if (!texts.length) return { count: 0 };
+    clipboard.writeText(texts.join('\n\n'));
+    return { count: texts.length, kind: 'text' };
+  }));
+  ipcMain.handle('shelf:open', fromShelf((id) => {
+    const [it] = shelf.get([id]);
+    if (!it) return;
+    if (it.kind === 'file') { if (fs.existsSync(it.path)) shell.openPath(it.path); }
+    else if (it.kind === 'link' && /^https?:/i.test(it.text)) shell.openExternal(it.text);
+    else clipboard.writeText(it.text);
+  }));
+  ipcMain.handle('shelf:reveal', fromShelf((id) => { const [f] = shelfFiles([id]); if (f) shell.showItemInFolder(f.path); }));
+  // Quick Look, as Space does in Finder. Text and links are shown through a temporary text file.
+  ipcMain.handle('shelf:preview', fromShelf(async (id) => {
+    const [it] = shelf.get([id]);
+    if (!it || !shelfWin.alive) return false;
+    const p = it.kind === 'file' ? (fs.existsSync(it.path) ? it.path : null) : await shelfTextFile(it);
+    if (!p) return false;
+    shelfWin.focus(); // Quick Look only appears for the focused window (a no-op when the Shelf already has the keys)
+    shelfWin.win.previewFile(p, it.name); // the name, not the whole path, in Quick Look's title bar
+    return true;
+  }));
+  ipcMain.handle('shelf:closePreview', fromShelf(() => { if (shelfWin.alive) shelfWin.win.closeFilePreview(); }));
+  ipcMain.handle('shelf:focus', fromShelf(() => shelfWin.focus()));
+  ipcMain.handle('shelf:icon', fromShelf((id) => { const [f] = shelf.get([id]); return f && f.kind === 'file' ? fileIcon(f.path, 96, true) : null; }));
+  ipcMain.on('shelf:setState', fromShelf((state) => { if (['closed', 'peek', 'open'].includes(state)) shelfWin.setState(state); }));
+  ipcMain.on('shelf:drag', (e, ids) => {
+    if (!shelfWin.owns(e.sender)) return;
+    const files = shelfFiles(ids);
+    const icon = dragIconFor(files[0] && files[0].path);
+    if (!files.length || icon.isEmpty()) return;
+    try { e.sender.startDrag({ file: files[0].path, files: files.map((it) => it.path), icon }); } catch (err) { console.error('[shelf drag]', err.message); }
   });
 
   const knownPath = (p) => {
@@ -895,6 +1026,7 @@ app.on('second-instance', () => showWindow());
 
 app.whenReady().then(async () => {
   store = new Store(DATA_DIR);
+  shelf = new Shelf(DATA_DIR);
   ledger = new Ledger(DATA_DIR);
   ledger.prune(store.settings.ledgerKeepDays);
   if (env('WATCH_DIR')) store.updateSettings({ watchDir: env('WATCH_DIR') });
@@ -929,6 +1061,8 @@ app.whenReady().then(async () => {
       }
     },
     show: showWindow,
+    shelf: () => ({ on: shelfWin.wanted, count: shelf.list().length, shortcut: shelfShortcutOk ? SHELF_SHORTCUT : undefined }),
+    showShelf,
     quit: () => { quitting = true; app.quit(); },
   });
 
@@ -936,6 +1070,7 @@ app.whenReady().then(async () => {
   if (store.settings.onboarded && !store.settings.lastSeenVersion) store.updateSettings({ lastSeenVersion: '1.0.0' });
   applyMode();
   applySystemSettings();
+  applyShelf();
   await rescan();
   await purgeExpired();
   setTimeout(() => { backfillArmed = true; backfillLedger(); }, 3000); // after the window is up; runs in the background
@@ -951,6 +1086,9 @@ app.whenReady().then(async () => {
 app.on('activate', () => showWindow());
 app.on('before-quit', () => {
   quitting = true;
+  globalShortcut.unregisterAll();
+  shelfWin.disable();
+  fs.rmSync(SHELF_TEXT_DIR, { recursive: true, force: true });
   if (store) store.flush();
   stopWatchers();
   if (syncWatched) fs.unwatchFile(syncWatched);

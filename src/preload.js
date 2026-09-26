@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('tidy', {
   gather: invoke('find:gather'),
   preview: invoke('find:preview'),
   startDrag: (p) => ipcRenderer.send('find:drag', p),
+  addToShelf: invoke('find:toShelf'),
   clearLedger: invoke('ledger:clear'),
   onSyncApplied: (fn) => ipcRenderer.on('sync:applied', (_e, summary) => fn(summary)),
   clearHistory: invoke('history:clear'),

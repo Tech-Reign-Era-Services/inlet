@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>Shelf</title>
+  <link rel="stylesheet" href="shelf.css">
+</head>
+<body>
+  <div class="island" id="island">
+    <i class="shoulder left" aria-hidden="true"></i>
+    <i class="shoulder right" aria-hidden="true"></i>
+    <div class="clip">
+      <div class="ears" id="ears" aria-hidden="true">
+        <span class="ear-thumb" id="ear-thumb"></span>
+        <span class="ear-count" id="ear-count"></span>
+      </div>
+      <div class="panel" id="panel">
+        <header class="head">
+          <div class="head-side">
+            <span class="title-icon" id="title-icon"></span><b>Shelf</b><span class="pill" id="count"></span>
+          </div>
+          <div class="head-gap"></div>
+          <div class="head-side end" id="actions"></div>
+        </header>
+        <div class="tray-wrap" id="tray-wrap">
+          <div class="tray" id="tray" tabindex="-1" role="listbox" aria-label="Shelf items" aria-multiselectable="true"></div>
+        </div>
+        <footer class="hint" id="hint" aria-live="polite"></footer>
+      </div>
+      <div class="drop" id="drop">
+        <svg class="drop-ring" aria-hidden="true"><rect rx="20" ry="20"></rect></svg>
+        <div class="drop-label"><span class="drop-icon" id="drop-icon"></span><span id="drop-text">Drop to keep it on the Shelf</span></div>
+      </div>
+    </div>
+  </div>
+  <script src="icons.js"></script>
+  <script src="shelf.js"></script>
+</body>
+</html>
