@@ -1,9 +1,10 @@
 # Inlet
 
-> Inlet is a free, open-source (MIT) macOS app that keeps the Downloads folder clean and finds files you describe in plain words. It runs entirely on the Mac: no account, no cloud, no analytics, no network access.
+> Inlet is a free, open-source (MIT) macOS app that keeps the Downloads folder clean and finds files you describe in plain words. It runs entirely on the Mac: no account, no cloud, no analytics. The only network request is an update check with GitHub, which can be turned off.
 
 - Tidy: sorts files into category folders (Images, Documents, Spreadsheets, Presentations, Videos, Audio, Archives, Installers, Code, Design, Fonts, Keys & Certs), automatically once a download finishes (Auto mode) or after a preview (Manual mode, the default). Never touches in-progress downloads.
 - Find: press ⌘F and describe a file, e.g. "pdfs from github last week" or "big videos I haven't opened in a month". Uses macOS Spotlight and Inlet's own records, not an AI service.
+- Shelf: a place in the notch (or the middle of the menu bar) to keep files, text and links for a moment. It opens as you drag something towards it; drag items out, or ⌘C then ⌘V anywhere; Space previews. Files are kept by reference, never copied or moved.
 - Remembers the website and app each download came from, even after unzipping.
 - Rules by name, extension, size, age, source website, Finder kind or text inside the file; rules can rename files.
 - Safety: never deletes or overwrites; every move can be undone (⌘Z, menu bar, Activity page); removed files are held 30 days.
