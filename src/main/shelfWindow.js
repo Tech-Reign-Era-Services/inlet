@@ -96,7 +96,7 @@ class ShelfWindow {
     screen.removeListener('display-removed', this.onDisplays);
     clearTimeout(this.shrinkTimer);
     this.watch(false);
-    clearInterval(this.keysTimer);
+    this.keepKeys(false);
     this.drags.stop();
     if (this.alive) this.win.destroy();
     this.win = null;
@@ -162,11 +162,14 @@ class ShelfWindow {
    * taking the keys back for a moment, as Finder keeps them, so Space, the arrows and Esc stay with the Shelf.
    * (Electron sends no blur when Quick Look takes them, so this has to look.)
    */
-  keepKeys() {
+  keepKeys(on = true) {
     clearInterval(this.keysTimer);
+    this.keysTimer = null;
+    if (!on) return;
     const until = Date.now() + KEEP_KEYS_MS;
     this.keysTimer = setInterval(() => {
-      if (!this.alive || Date.now() > until) { clearInterval(this.keysTimer); this.keysTimer = null; return; }
+      // Stop early once the Shelf has closed: it mustn't hold the keyboard while it's out of sight.
+      if (!this.alive || this.state === 'closed' || Date.now() > until) return this.keepKeys(false);
       if (!this.win.isFocused()) this.win.focus();
     }, 40);
   }
