@@ -1022,6 +1022,10 @@ function findBar() {
     h('div', { class: 'inline' },
       button('Copy paths', async () => { await navigator.clipboard.writeText(paths.join('\n')); toast(`Copied ${plural(paths.length, 'path')}`); }, { cls: 'ghost' }),
       button('Show in Finder', () => paths.slice(0, 10).forEach((p) => api.reveal(p))),
+      S.st.settings.shelfEnabled !== false && button('Add to Shelf', async () => {
+        const res = await api.addToShelf(paths);
+        toast(res.added ? `Put ${plural(res.added, 'file')} on the Shelf` : 'Nothing to add', { error: !res.added });
+      }, { iconName: 'shelf', title: 'Keep these at the top of the screen, to drag or paste somewhere else' }),
       button('Gather into a folder…', () => gatherDialog(paths), { cls: 'primary', iconName: 'folder' })));
 }
 
@@ -1263,6 +1267,11 @@ function renderSettings() {
         row('Launch at login', 'Start Inlet quietly in the menu bar when you log in. Takes effect in the installed app.', toggle(s.launchAtLogin, (v) => saveSettings({ launchAtLogin: v }))),
         row('Show in Dock', 'Turn off to keep Inlet in the menu bar only.', toggle(s.showDockIcon, (v) => saveSettings({ showDockIcon: v }))),
         row('Notifications', 'Get a notification when Auto mode sorts something.', toggle(s.notifications, (v) => saveSettings({ notifications: v }))))),
+      h('div', {}, ...group('Shelf',
+        row('Shelf at the top of the screen', 'A place to keep files, text and links for a moment. Drop them on the notch (or the middle of the menu bar), then drag them out or paste them anywhere. Files stay where they are; the Shelf only points to them.',
+          toggle(s.shelfEnabled !== false, (v) => saveSettings({ shelfEnabled: v }))),
+        s.shelfEnabled !== false && row('Open the Shelf', S.st.shelf.shortcut ? `Press ${S.st.shelf.shortcut} from any app, or hover over the notch.` : 'Hover over the notch, or use the menu bar icon.',
+          h('span', { class: 'muted' }, S.st.shelf.count ? plural(S.st.shelf.count, 'item') : 'Empty')))),
       h('div', {}, ...group('Auto mode',
         row('Wait before sorting', 'Extra time after a file stops changing, in case you want to open it first.',
           select([...new Map([[3, '3 seconds'], [5, '5 seconds'], [10, '10 seconds'], [30, '30 seconds'], [60, '1 minute'], [300, '5 minutes'], [s.autoDelaySec, `${s.autoDelaySec} seconds`]])]

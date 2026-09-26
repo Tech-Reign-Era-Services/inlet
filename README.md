@@ -6,6 +6,7 @@
 
 - **Tidy:** Inlet sorts downloads into folders (Images, Documents, Installers and more), either automatically as they finish or when you click one button.
 - **Find:** type what you remember, like *“pdfs from github last week”* or *“the contract I signed in July”*, and Inlet finds it. It even knows which website a file came from after macOS has forgotten.
+- **Shelf:** drop files, text or links on the notch to keep them for a moment, then drag or paste them wherever they need to go.
 
 ![Inlet overview](docs/screenshots/overview.png)
 
@@ -77,6 +78,19 @@ macOS forgets which website a file came from when you unzip it, AirDrop it or sa
 - **Folders are left alone.** Project folders and anything that isn't a loose file stay where they are, unless you choose otherwise.
 
 ![Rules](docs/screenshots/rules.png)
+
+### The Shelf: a drawer in the notch
+
+Sometimes you collect things from several places and drop them somewhere else one at a time: attachments for an email, assets for a design, files for an upload form. The Shelf keeps them at the top of your screen in the meantime, so you don't have to go back for each one.
+
+![The Shelf](docs/screenshots/shelf.png)
+
+- **Put things on it:** drag files, folders, selected text or a link onto the notch. It opens as you arrive, like the Dynamic Island. On a Mac without a notch, use the middle of the top edge of the screen.
+- **Open it:** hover over the notch, press **⌃⌥S** from any app, or choose **Show Shelf** in the menu bar.
+- **Take things off:** drag an item out to Finder, Mail, Slack, a browser upload box or anywhere else. Select several (⌘-click, Shift-click or ⌘A) to drag them together. Or press **⌘C** and then **⌘V** where you want the files themselves. With the Shelf open, **⌘V** adds whatever you copied.
+- **Nothing is copied or moved.** The Shelf only points to your files, so it takes no space. It keeps its contents when you quit, and a file you move elsewhere drops off the Shelf. Clear it in one click, or turn it off in **Settings → Shelf**.
+- **Take a look first:** select an item and press **Space** to preview it with Quick Look, then **← →** to flip through the rest. Text and links preview too.
+- **From Find:** select results and choose **Add to Shelf**.
 
 ### Safe by design
 
