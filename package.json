@@ -1,7 +1,7 @@
 {
   "name": "inlet",
   "productName": "Inlet",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Keeps your Downloads folder clean and finds any file you describe in plain English. Sorts automatically or on demand, remembers where files came from, and everything is undoable.",
   "main": "src/main/main.js",
   "author": "Tech Reign Era Services",

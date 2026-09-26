@@ -22,6 +22,7 @@ const { TrayController } = require('./tray');
 const { Shelf } = require('./shelf');
 const { ShelfWindow } = require('./shelfWindow');
 const pasteboard = require('./pasteboard');
+const updates = require('./updates');
 
 app.setName('Inlet');
 // Dev overrides let you point Inlet at a sandbox folder instead of your real Downloads.
@@ -92,6 +93,7 @@ function state() {
     holding,
     nextScheduled: nextScheduledRun(),
     shelf: { count: shelf ? shelf.list().length : 0, shortcut: shelfShortcutOk ? '⌃⌥S' : '' },
+    update: publicUpdate(),
     version: APP_VERSION,
   };
 }
@@ -415,8 +417,7 @@ function afterSettingsChange(prev) {
   if (portable.portableChanged(prev, store.settings)) scheduleSyncWrite();
 }
 
-const semver = (v) => String(v).split('.').map(Number);
-const newer = (a, b) => { const x = semver(a); const y = semver(b); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
+const { newer } = updates;
 /** Release notes you haven't seen yet (empty on a fresh install). */
 function whatsNew() {
   const seen = store.settings.lastSeenVersion;
@@ -485,6 +486,78 @@ async function emptyHolding() {
   }
   store.save('history');
   await rescan();
+}
+
+// ---------- updates ----------
+
+// status: 'idle' | 'checking' | 'current' | 'available' | 'downloading' | 'installing' | 'error'
+let update = { status: 'idle', latest: null, progress: 0, error: '', dismissed: false };
+let updateNotified = ''; // the version we've already sent a notification about
+const UPDATE_EVERY_MS = 6 * 60 * 60 * 1000;
+const UPDATE_DIR = path.join(app.getPath('temp'), 'Inlet Update');
+
+function publicUpdate() {
+  const { latest } = update;
+  const skipped = !!latest && store.settings.skippedVersion === latest.version;
+  return { ...update, current: APP_VERSION, checkedAt: store.settings.lastUpdateCheck || 0, skipped, show: update.status !== 'idle' && !!latest && newer(latest.version, APP_VERSION) && !skipped && !update.dismissed };
+}
+
+function setUpdate(patch) {
+  update = { ...update, ...patch };
+  broadcast();
+}
+
+/** Ask GitHub for a newer Inlet. manual: the person clicked Check now (so say "up to date", and ignore Skip). */
+async function checkForUpdates({ manual = false } = {}) {
+  if (!manual && store.settings.updateCheck === false) return;
+  if (['checking', 'downloading', 'installing'].includes(update.status)) return;
+  setUpdate({ status: 'checking', error: '' });
+  try {
+    const latest = await updates.fetchLatest({ url: env('UPDATE_URL') || updates.LATEST_URL, userAgent: `Inlet/${APP_VERSION}` });
+    store.updateSettings({ lastUpdateCheck: Date.now() });
+    const available = !!latest && newer(latest.version, APP_VERSION);
+    if (manual && available && store.settings.skippedVersion === latest.version) store.updateSettings({ skippedVersion: '' });
+    setUpdate({ status: available ? 'available' : 'current', latest, dismissed: manual ? false : update.dismissed });
+    const quiet = store.settings.skippedVersion === latest?.version || updateNotified === latest?.version;
+    if (available && !manual && !quiet && Notification.isSupported()) {
+      updateNotified = latest.version;
+      const n = new Notification({ title: `Inlet ${latest.version} is available`, body: 'Click to see what’s new and update.', silent: true });
+      n.on('click', () => showUpdate());
+      n.show();
+    }
+  } catch (err) {
+    // A failed automatic check (offline, GitHub busy) stays quiet; a manual one says what went wrong.
+    setUpdate({ status: manual ? 'error' : (update.latest ? 'available' : 'idle'), error: manual ? `Couldn’t reach GitHub: ${err.message}` : '' });
+  }
+}
+
+/** Download the new installer, check it, and open it in macOS Installer (which asks to quit Inlet). */
+async function installUpdate() {
+  const { latest } = update;
+  if (!latest || !latest.asset || ['downloading', 'installing'].includes(update.status)) return;
+  setUpdate({ status: 'downloading', progress: 0, error: '' });
+  let shown = 0;
+  try {
+    const file = await updates.download(latest.asset, UPDATE_DIR, {
+      // Progress goes straight to the bar, not through a full redraw of the window.
+      onProgress: (p) => {
+        if (p - shown < 0.01 && p !== 1) return;
+        shown = p;
+        update.progress = p;
+        if (win && !win.isDestroyed()) win.webContents.send('update:progress', p);
+      },
+    });
+    setUpdate({ status: 'installing', progress: 1 });
+    const err = await shell.openPath(file);
+    if (err) throw new Error(err);
+  } catch (err) {
+    setUpdate({ status: 'error', error: err.message || String(err) });
+  }
+}
+
+function showUpdate() {
+  showWindow();
+  if (win && !win.isDestroyed()) win.webContents.send('update:show');
 }
 
 // ---------- the Shelf ----------
@@ -571,10 +644,30 @@ function createWindow() {
   win.webContents.on('will-navigate', (e) => e.preventDefault());
 }
 
+/** After Inlet ▸ Check for Updates…: show the update, or say Inlet is up to date. */
+function showUpdateResult() {
+  if (publicUpdate().show) return showUpdate();
+  showWindow('settings'); // the Updates section says "up to date" or what went wrong
+}
+
 function buildMenu() {
   const go = (page, key) => ({ label: page[0].toUpperCase() + page.slice(1), accelerator: `CmdOrCtrl+${key}`, click: () => showWindow(page) });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { role: 'appMenu' },
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { label: 'Check for Updates…', click: async () => { await checkForUpdates({ manual: true }); showUpdateResult(); } },
+        { type: 'separator' },
+        { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => showWindow('settings') },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
     {
       label: 'Edit',
       submenu: [
@@ -848,6 +941,15 @@ function registerIpc() {
     watchSyncFile();
     return state();
   });
+  ipcMain.handle('update:check', async () => { await checkForUpdates({ manual: true }); return state(); });
+  ipcMain.handle('update:install', () => { installUpdate(); return state(); });
+  ipcMain.handle('update:later', () => { setUpdate({ dismissed: true }); return state(); });
+  ipcMain.handle('update:skip', () => {
+    if (update.latest) store.updateSettings({ skippedVersion: update.latest.version });
+    broadcast();
+    return state();
+  });
+  ipcMain.handle('update:notes', () => { if (update.latest && /^https:\/\/github\.com\//.test(update.latest.url)) shell.openExternal(update.latest.url); });
   ipcMain.handle('whatsnew:seen', () => { store.updateSettings({ lastSeenVersion: APP_VERSION }); return state(); });
 
   // ----- watched folders -----
@@ -1063,6 +1165,8 @@ app.whenReady().then(async () => {
     show: showWindow,
     shelf: () => ({ on: shelfWin.wanted, count: shelf.list().length, shortcut: shelfShortcutOk ? SHELF_SHORTCUT : undefined }),
     showShelf,
+    getUpdate: publicUpdate,
+    showUpdate,
     quit: () => { quitting = true; app.quit(); },
   });
 
@@ -1081,6 +1185,10 @@ app.whenReady().then(async () => {
   setInterval(tickSchedule, 30 * 1000);
   setInterval(purgeExpired, 60 * 60 * 1000);
   tickSchedule();
+  if (!env('SCREENSHOTS')) {
+    setTimeout(() => checkForUpdates(), 10 * 1000); // after startup settles
+    setInterval(() => checkForUpdates(), UPDATE_EVERY_MS);
+  }
 });
 
 app.on('activate', () => showWindow());
@@ -1089,6 +1197,7 @@ app.on('before-quit', () => {
   globalShortcut.unregisterAll();
   shelfWin.disable();
   fs.rmSync(SHELF_TEXT_DIR, { recursive: true, force: true });
+  if (update.status !== 'installing') fs.rmSync(UPDATE_DIR, { recursive: true, force: true }); // the installer may still need it
   if (store) store.flush();
   stopWatchers();
   if (syncWatched) fs.unwatchFile(syncWatched);
