@@ -39,7 +39,9 @@ jobs:
           PKG="v$(node -p "require('./package.json').version")"
           if [ "$PKG" != "$TAG" ]; then echo "Tag $TAG doesn't match package.json version $PKG"; exit 1; fi
 
-      - run: npm run dist
+      # --publish never: electron-builder would otherwise create its own empty draft release on a tag,
+      # and the step below would only upload to it, losing the title and install notes.
+      - run: npm run dist -- --publish never
 
       - name: Attach the installer to a draft release
         run: |
