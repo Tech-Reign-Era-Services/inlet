@@ -100,17 +100,26 @@ function mdfind(queryString, dir, { cap = FOLDER_CAP, timeout = 20000 } = {}) {
   });
 }
 
-/** Is this folder in the Spotlight index? (Checked once per session.) */
-const indexedCache = new Map();
+/**
+ * Is this folder in the Spotlight index? A yes is kept for the session. A no is re-checked after a minute: the
+ * probed files may just not be indexed yet (new downloads), and a wrong no means slow direct scans.
+ */
+const indexedCache = new Map(); // dir → { ok, at }
 async function isIndexed(dir) {
-  if (indexedCache.has(dir)) return indexedCache.get(dir);
+  const hit = indexedCache.get(dir);
+  if (hit && (hit.ok || Date.now() - hit.at < 60000)) return hit.ok;
   let entries = [];
   try { entries = (await fsp.readdir(dir, { withFileTypes: true })).filter((e) => !e.name.startsWith('.')); } catch { /* unreadable */ }
-  const probe = entries.find((e) => e.isFile()) || entries[0];
+  // Ask for a few known items by exact name (fast, unlike listing the folder, since mdfind only returns when
+  // done). Several, so one file that isn't indexed yet can't decide it: any one found means the folder is indexed.
+  const files = entries.filter((e) => e.isFile()).map((e) => e.name);
+  const probes = (files.length ? files : entries.map((e) => e.name)).sort().slice(0, 3);
   let ok = true;
-  // Ask for one known item by its exact name: fast, unlike listing the folder (mdfind only returns when done).
-  if (probe) ok = (await mdfind(`kMDItemFSName == "${esc(probe.name)}"`, dir, { cap: 5, timeout: 8000 })).paths.length > 0;
-  indexedCache.set(dir, ok);
+  if (probes.length) {
+    const qs = probes.map((n) => `kMDItemFSName == "${esc(n)}"`).join(' || ');
+    ok = (await mdfind(qs, dir, { cap: 5, timeout: 8000 })).paths.length > 0;
+  }
+  indexedCache.set(dir, { ok, at: Date.now() });
   return ok;
 }
 
@@ -159,6 +168,9 @@ async function codeFolders(root) {
   try {
     for (const e of await fsp.readdir(root, { withFileTypes: true })) {
       if (!e.isDirectory() || e.name.startsWith('.')) continue;
+      // Searching the whole home folder never looks in ~/Library, so don't dig through it either (it's slow, and
+      // reading other apps' data there can raise macOS privacy prompts).
+      if (e.name === 'Library' && root === os.homedir()) continue;
       if (CODE_MARKERS.has(e.name) || await hasCodeMarker(path.join(root, e.name), 3)) names.add(e.name);
     }
   } catch { /* unreadable */ }
@@ -199,7 +211,7 @@ async function facts(p, ledger) {
 }
 
 /** Check the conditions Spotlight couldn't (apps, ledger sources), and those for non-Spotlight candidates. Returns reasons, or null. */
-async function check(f, q, ctx, { trustSpotlight }) {
+async function check(f, q, ctx, { trustSpotlight, noText = false }) {
   const reasons = [];
   const when = f.downloadedAt || f.createdAt;
   const origin = f.entry ? originSummary(f.entry) : null;
@@ -261,7 +273,7 @@ async function check(f, q, ctx, { trustSpotlight }) {
   let text = null;
   const readText = async () => {
     if (text !== null) return text;
-    if (ctx.noText || !spotlight.canReadText(f)) return (text = '');
+    if (noText || !spotlight.canReadText(f)) return (text = '');
     if (ctx.textBudget <= 0) { ctx.textSkipped = true; return (text = ''); }
     ctx.textBudget--;
     return (text = await spotlight.extractText({ ...f, mtimeMs: f.modifiedAt }));
@@ -458,7 +470,11 @@ async function search(query, ctxIn) {
         await checkLoose(r, q, ctx, found, add);
       }
     }
-    const paths = [...new Set(spotPaths)].filter((p) => !skipped(p, dirs)).slice(0, 2000);
+    // Too many to check them all: keep the ones with search words in their name first (they rank highest).
+    const nameHits = (p) => { const n = path.basename(p).toLowerCase(); return q.words.filter((w) => n.includes(w.toLowerCase())).length; };
+    let paths = [...new Set(spotPaths)].filter((p) => !skipped(p, dirs));
+    if (paths.length > 2000) paths = paths.map((p) => [p, nameHits(p)]).sort((a, b) => b[1] - a[1]).map(([p]) => p);
+    paths = paths.slice(0, 2000);
     await prefetch(paths, q, ctx);
     for (const p of paths) {
       const f = await facts(p, ctx.ledger);
@@ -474,7 +490,10 @@ async function search(query, ctxIn) {
   }
 
   // 2. The ledger: sources macOS has forgotten, download apps, and download times.
-  //    (Text checks here are limited by ctx.textBudget; Spotlight already covered text in indexed folders.)
+  //    Text checks here share ctx.textBudget with the rest of the search. Spotlight already checked the text of
+  //    indexed files, but only together with its own date and "where from" conditions: when the query has a
+  //    website or a download date, a file can have failed Spotlight on those alone (the ledger knows better),
+  //    so its text still needs reading here.
   if (ctx.ledger && (q.sources.length || q.apps.length || q.time?.field === 'downloaded')) {
     for (const e of ctx.ledger.entries.values()) {
       if (found.has(e.path)) continue;
@@ -483,7 +502,8 @@ async function search(query, ctxIn) {
       if (!f || f.entry !== e) continue; // moved or replaced since
       // Spotlight has already checked the text of indexed files; don't read it all again here.
       const indexed = unindexed.every((d) => !folders.isInside(path.resolve(e.path), d));
-      add(f, await check(f, q, { ...ctx, noText: indexed }, { trustSpotlight: false }));
+      const spotlightJudgedText = indexed && !q.sources.length && q.time?.field !== 'downloaded';
+      add(f, await check(f, q, ctx, { trustSpotlight: false, noText: spotlightJudgedText }));
     }
   }
 

@@ -8,9 +8,11 @@
 const DAY = 86400000;
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const MONTH_SHORT = MONTHS.map((m) => m.slice(0, 3));
+const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+// Words that start a time phrase: "opened last week", "edited on monday", "used in march".
+const TIME_CUE = `(?:today|yesterday|this|last|past|previous|in|on|since|before|after|during|recently|lately|over|within|\\d+|a while|${WEEKDAYS.join('|')})`;
 // Whole month names and their usual abbreviations only: "decks", "marketing" and "separate" aren't months.
 const MONTH_RE = `(?:${[...MONTHS, 'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sept', 'sep', 'oct', 'nov', 'dec'].join('|')})`;
-const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const NUMBER_WORDS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twelve: 12, couple: 2, few: 3 };
 
 // Words for Inlet's built-in categories (ids from defaults.js).
@@ -92,9 +94,12 @@ function parseTime(state, now) {
   }
 
   // Which date the person means. Default: when it arrived (downloaded).
+  // Only when it's about what someone did ("I opened", "we edited") or a date follows ("opened last week"):
+  // in "pdfs about used cars" or "used car receipts", "used" describes the thing.
+  const fieldRe = (verbs) => new RegExp(`\\b(?:(?:i|we|you|he|she|they)(?:'ve| have| had)?\\s+(?:last\\s+|first\\s+|recently\\s+)?(?:${verbs})|(?:${verbs})(?=\\s+${TIME_CUE}\\b))\\b`);
   let field = 'downloaded';
-  if (take(state, /\b(opened|used|looked at|viewed|read)\b/)) field = 'opened';
-  else if (take(state, /\b(edited|modified|changed|updated|worked on)\b/)) field = 'modified';
+  if (take(state, fieldRe('opened|used|looked at|viewed|read'))) field = 'opened';
+  else if (take(state, fieldRe('edited|modified|changed|updated|worked on'))) field = 'modified';
 
   const fieldWord = { downloaded: 'downloaded', opened: 'opened', modified: 'changed' }[field];
   let t = null;

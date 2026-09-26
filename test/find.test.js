@@ -88,6 +88,12 @@ test('ordinary words aren’t mistaken for months, people, removals or file type
   assert.equal(p('what did i remove yesterday').inletAction, 'removed');
   assert.equal(p('files i deleted last week').inletAction, 'removed');
 
+  // "used", "read", "changed" describe the thing unless someone did it or a date follows
+  assert.deepEqual(p('pdfs about used cars').chips.map((c) => c.label), ['.pdf', 'mentions “used cars”']);
+  assert.equal(p('used car receipts from last week').time.field, 'downloaded');
+  assert.equal(p('pdfs opened last week').time.label, 'opened last week');
+  assert.equal(p('docs changed on monday').time.label, 'changed on Monday');
+
   // Everyday words that are also extensions
   assert.deepEqual(p('web pages about taxes').kinds, []);
   assert.deepEqual(p('.pages files about taxes').kinds.map((k) => k.label), ['.pages']);
