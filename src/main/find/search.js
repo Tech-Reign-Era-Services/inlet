@@ -230,7 +230,8 @@ async function check(f, q, ctx, { trustSpotlight, noText = false }) {
     const hosts = [origin?.host, ...(f.entry?.urls || [])].filter(Boolean).map((h) => h.toLowerCase());
     const hit = q.sources.find((s) => hosts.some((h) => h.includes(s)));
     if (!hit && !trustSpotlight) return null;
-    const host = origin?.host || hit;
+    // No ledger entry (downloaded before Inlet recorded sources): Spotlight matched its own "where from" on the query's website.
+    const host = origin?.host || hit || q.sources.join(' or ');
     reasons.push(origin?.inheritedFrom ? `from ${host} (unzipped from ${origin.inheritedFrom})` : `from ${host}`);
   }
 
@@ -308,6 +309,19 @@ async function lastUsed(p) {
     if (lastUsedCache.size > 5000) lastUsedCache.clear();
   }
   return lastUsedCache.get(p);
+}
+
+/** The folders a place chip means: a watched folder, or a category's folder in each watched folder (those that exist). */
+function placeDirs(place, settings) {
+  let dirs = [];
+  if (place.folderId) {
+    const f = folders.watchedFolders(settings).find((x) => x.id === place.folderId);
+    if (f) dirs = [path.resolve(f.path)];
+  } else {
+    const c = settings.categories.find((x) => x.id === place.categoryId);
+    if (c) dirs = folders.eachFolderSettings(settings).map((fs_) => path.resolve(resolveFolder(c.folder, destBase(fs_))));
+  }
+  return [...new Set(dirs)].filter((d) => fs.existsSync(d));
 }
 
 function inPlace(p, place, settings) {
@@ -435,10 +449,15 @@ async function search(query, ctxIn) {
   }
 
   await reconsiderSources(q, ctx, dirs);
-  const { roots } = await areas(ctx.settings, ctx.everywhere);
+  // A place on its own ("files on my desktop") gives Spotlight no condition to search for: list that place,
+  // and only that place, instead of skipping Spotlight (which found nothing in indexed folders).
+  const conditions = toSpotlight(q, { categories: ctx.settings.categories });
+  const placeOnly = !conditions && !!q.place;
+  const roots = placeOnly ? placeDirs(q.place, ctx.settings) : (await areas(ctx.settings, ctx.everywhere)).roots;
+  // Every file there (mdfind doesn't treat kMDItemFSName == "*" as match-all, but every file has a size).
+  const qs = conditions || (placeOnly && roots.length ? 'kMDItemFSSize >= 0' : null);
   const broad = !q.words.length && !q.phrases.length && !q.sources.length && !q.kinds.length;
   const wantsCode = ctx.includeCode || q.kinds.some((k) => k.id === 'code' || (k.ext && (ctx.settings.categories.find((c) => c.id === 'code')?.extensions || []).includes(k.ext)));
-  const qs = toSpotlight(q, { categories: ctx.settings.categories });
   const unindexed = [];
   const leftOut = new Map(); // code folder name → matches left out
 

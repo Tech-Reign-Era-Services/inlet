@@ -108,15 +108,16 @@ function parseTime(state, now) {
   else if (take(state, /\b(?:this evening|tonight)\b/)) t = range(today + DAY * 0.75, today + DAY, 'this evening');
   else if (take(state, /\btoday\b/)) t = range(today, today + DAY, 'today');
   else if (take(state, /\byesterday\b/)) t = range(today - DAY, today, 'yesterday');
-  else if ((m = take(state, /\b(?:in the |over the |within the )?(?:last|past)\s+(\w+)\s+(day|week|month|year)s?\b/))) {
-    const n = num(m[1]) || 1;
-    const days = n * { day: 1, week: 7, month: 30, year: 365 }[m[2]];
-    t = range(today - days * DAY + DAY, now.getTime() + 1, `last ${n} ${m[2]}${n === 1 ? '' : 's'}`);
-  } else if ((m = take(state, /\b(\w+)\s+(day|week|month|year)s?\s+ago\b/))) {
-    const n = num(m[1]) || 1;
-    const days = n * { day: 1, week: 7, month: 30, year: 365 }[m[2]];
-    const span = { day: 1, week: 7, month: 30, year: 365 }[m[2]];
-    t = range(today - days * DAY, today - days * DAY + span * DAY, `${n} ${m[2]}${n === 1 ? '' : 's'} ago`);
+  else if ((m = take(state, /\b(?:in |over |within |during )?(?:the )?past\s+(day|week|month|year)\b/))) {
+    // "the past week": a rolling window up to now (unlike "last week", the calendar week before this one)
+    t = range(today - UNIT_DAYS[m[1]] * DAY + DAY, now.getTime() + 1, `past ${m[1]}`);
+  } else if ((m = takeCount(state, /\b(?:in the |over the |within the )?(?:last|past)\s+(?:a\s+)?(\w+)(?:\s+of)?\s+(day|week|month|year)s?\b/))) {
+    const days = m.hi * UNIT_DAYS[m[2]];
+    t = range(today - days * DAY + DAY, now.getTime() + 1, `last ${m.label} ${m[2]}${m.hi === 1 ? '' : 's'}`);
+  } else if ((m = takeCount(state, /\b(?:a\s+)?(\w+)(?:\s+of)?\s+(day|week|month|year)s?\s+ago\b/))) {
+    // "3 weeks ago" is that week; "a few weeks ago" spans the likely range (2 to 4 weeks back)
+    const unit = UNIT_DAYS[m[2]];
+    t = range(today - m.hi * unit * DAY, today - m.lo * unit * DAY + unit * DAY, `${m.label} ${m[2]}${m.hi === 1 ? '' : 's'} ago`);
   } else if ((m = take(state, /\b(last|this|previous)\s+weekend\b/))) {
     const sinceSat = (now.getDay() + 1) % 7; // days since the most recent Saturday
     const sat = today - sinceSat * DAY - (m[1] === 'this' ? 0 : (sinceSat <= 1 ? 7 * DAY : 0));
@@ -178,6 +179,27 @@ function takeMonth(state) {
     return [m[0], m[2], m[3]];
   }
   return null;
+}
+
+const UNIT_DAYS = { day: 1, week: 7, month: 30, year: 365 };
+// Counts people say without a number: a likely range rather than a guess.
+const VAGUE = { couple: [1, 3], few: [2, 4], several: [3, 7] };
+
+/**
+ * Take a "<count> <unit>" match only when the count is understood ("3", "two", "a couple of", "a few").
+ * Anything else ("pdfs from…", "old weeks") is left alone instead of being read as 1.
+ * Returns the match plus { lo, hi, label }.
+ */
+function takeCount(state, re) {
+  const m = state.text.match(re);
+  if (!m) return null;
+  const word = m[1];
+  let lo; let hi;
+  if (VAGUE[word]) [lo, hi] = VAGUE[word];
+  else if (num(word) != null) lo = hi = num(word);
+  else return null;
+  take(state, re);
+  return Object.assign(m, { lo, hi, label: { couple: 'a couple of', few: 'a few', several: 'several' }[word] || String(hi) });
 }
 
 const pretty = (s) => (/^\d{4}$/.test(s) ? s : `${s[0].toUpperCase()}${s.slice(1)}`);

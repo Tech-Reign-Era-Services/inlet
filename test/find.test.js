@@ -94,6 +94,18 @@ test('ordinary words aren’t mistaken for months, people, removals or file type
   assert.equal(p('pdfs opened last week').time.label, 'opened last week');
   assert.equal(p('docs changed on monday').time.label, 'changed on Monday');
 
+  // "the past week" without a number, and counts said in words
+  assert.deepEqual(p('files from the past week').chips.map((c) => c.label), ['past week']);
+  assert.equal(new Date(p('files from the past week').time.from).toDateString(), 'Sat Sep 19 2026');
+  assert.deepEqual(p('in the past month').chips.map((c) => c.label), ['past month']);
+  const couple = p('pdfs from a couple of weeks ago');
+  assert.deepEqual(couple.chips.map((c) => c.label), ['.pdf', 'a couple of weeks ago']); // no "from couple"
+  assert.equal(new Date(couple.time.from).toDateString(), 'Fri Sep 04 2026'); // 3 weeks back…
+  assert.equal(new Date(couple.time.to).toDateString(), 'Fri Sep 25 2026'); // …to 1 week back, plus that week
+  assert.equal(p('files from several days ago').time.label, 'several days ago');
+  assert.equal(p('photos from 3 weeks ago').time.label, '3 weeks ago');
+  assert.equal(p('a week ago').time.label, '1 week ago');
+
   // Everyday words that are also extensions
   assert.deepEqual(p('web pages about taxes').kinds, []);
   assert.deepEqual(p('.pages files about taxes').kinds.map((k) => k.label), ['.pages']);
