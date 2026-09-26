@@ -5,7 +5,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { Shelf, parseNotch, layout, MAX_ITEMS, EAR, SHOULDER } = require('../src/main/shelf');
+const { Shelf, parseNotch, layout, nearShelf, MAX_ITEMS, EAR, SHOULDER } = require('../src/main/shelf');
 
 const tmp = (p) => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), p)));
 
@@ -116,4 +116,19 @@ test('without a notch it is a thin strip in the middle of the menu bar', () => {
   assert.ok(L.closed.height < 10, 'never covers menu bar items');
   // A notch measured on another screen (e.g. the lid is closed and an external display is primary) is ignored.
   assert.equal(layout(display, parseNotch(MBP), 0).hasNotch, false);
+});
+
+test('a drag opens the Shelf once it gets near the notch, not just on it', () => {
+  const L = layout(MBP_DISPLAY, parseNotch(MBP), 0);
+  const mid = L.closed.x + L.closed.width / 2;
+  assert.ok(nearShelf({ x: mid, y: 0 }, L), 'on the notch');
+  assert.ok(nearShelf({ x: L.closed.x - 40, y: 10 }, L), 'beside it');
+  assert.ok(nearShelf({ x: mid, y: L.bar + 10 }, L), 'just below the menu bar');
+  assert.ok(!nearShelf({ x: mid, y: L.bar + 200 }, L), 'not from the middle of the screen');
+  assert.ok(!nearShelf({ x: 20, y: 5 }, L), 'not from the menu bar far to the side');
+  // Without a notch, the thin strip gets the same reach.
+  const display = { bounds: { x: -2560, y: -300, width: 2560, height: 1440 }, workArea: { x: -2560, y: -275, width: 2560, height: 1415 } };
+  const flat = layout(display, null, 0);
+  assert.ok(nearShelf({ x: -1280, y: -290 }, flat));
+  assert.ok(!nearShelf({ x: -1280, y: -100 }, flat));
 });
