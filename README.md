@@ -9,30 +9,26 @@
 
 ## Download
 
-Get the latest `.dmg` from [**Releases**](https://github.com/Tech-Reign-Era-Services/inlet/releases/latest):
+Get **`Inlet-<version>.pkg`** from [**Releases**](https://github.com/Tech-Reign-Era-Services/inlet/releases/latest). It's one installer for every Mac, Apple silicon and Intel alike. Needs macOS 13 Ventura or later.
 
-| Your Mac | File to download |
-|---|---|
-| Apple silicon (M1, M2, M3, M4…) | `Inlet-<version>-arm64.dmg` |
-| Intel | `Inlet-<version>-x64.dmg` |
+### Install
 
-Not sure which you have? Click the Apple menu → **About This Mac**. It says "Chip: Apple …" for Apple silicon, or "Processor: Intel …".
+1. Open the `.pkg`. The first time, macOS may stop you (see below).
+2. Click **Continue** on the welcome page, then **Continue** and **Agree** on the license.
+3. Click **Install**, and enter your Mac password when asked (Inlet goes into your Applications folder).
+4. When it's done, click **Close**. Inlet opens by itself and puts its icon in the menu bar.
 
-Needs macOS 13 Ventura or later.
+### "Apple could not verify…" the first time
 
-### First launch: "Apple cannot check it for malicious software"
+Inlet is free and not signed with a paid Apple Developer certificate, so macOS asks you to confirm before running the installer. This happens once, for the installer only:
 
-Inlet is free and not signed with a paid Apple Developer certificate, so macOS asks you to confirm the first time you open it. This only happens once.
+- **Right-click** the `.pkg`, choose **Open**, then click **Open** again, or
+- If there's no Open button (newer macOS): try to open it once and close the warning, then go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the message about Inlet.
 
-1. Open the `.dmg` and drag **Inlet** into **Applications**.
-2. In Applications, **right-click** Inlet and choose **Open**, then click **Open** again.
+### Update or uninstall
 
-If there's no Open button (on newer versions of macOS):
-
-1. Try to open Inlet once and close the warning.
-2. Go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the message about Inlet.
-
-Or, in Terminal: `xattr -dr com.apple.quarantine /Applications/Inlet.app`
+- **Update:** run the new installer. It asks you to quit Inlet first, then replaces it. Your settings and history are kept.
+- **Uninstall:** quit Inlet from its menu bar icon and move it from Applications to the Trash. To remove its settings and history too, delete `~/Library/Application Support/Inlet`.
 
 When Inlet first reads your Downloads folder, macOS asks for permission. Click **Allow**.
 
@@ -71,10 +67,10 @@ npm start          # run Inlet from source
 To make your own installer:
 
 ```bash
-npm run dist       # → dist/Inlet-<version>-arm64.dmg and dist/Inlet-<version>-x64.dmg
+npm run dist       # → dist/Inlet-<version>.pkg, one installer for Apple silicon and Intel
 ```
 
-An app you build yourself opens without the security warning above.
+A build you make yourself opens without the security warning above. To change the installer's pages, edit `build/pkg/` (welcome, license and summary pages; the sidebar image is drawn by `scripts/make-icons.js`).
 
 ### Development
 
@@ -123,7 +119,7 @@ Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 1. Bump `version` in `package.json` and add an entry to `src/main/changelog.js` (it's shown in the app's "What's new" window).
 2. Commit, then tag and push: `git tag v1.6.0 && git push origin v1.6.0`.
-3. The **Release** GitHub Action tests the code, builds both DMGs, and attaches them to a draft release using the notes in `.github/release-notes.md`. Review the draft on GitHub, then publish it.
+3. The **Release** GitHub Action tests the code, builds the universal installer (`.pkg`), and attaches it to a draft release using the notes in `.github/release-notes.md`. Review the draft on GitHub, then publish it.
 
 ## License
 

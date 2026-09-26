@@ -1,0 +1,11 @@
+#!/bin/sh
+# Runs as root after Inlet is installed: open it for the person at the screen.
+# Never fail the installation because of this.
+user=$(/usr/bin/stat -f%Su /dev/console 2>/dev/null)
+if [ -n "$user" ] && [ "$user" != "root" ] && [ "$user" != "loginwindow" ]; then
+  uid=$(/usr/bin/id -u "$user" 2>/dev/null)
+  if [ -n "$uid" ]; then
+    /bin/launchctl asuser "$uid" /usr/bin/sudo -u "$user" /usr/bin/open -a "/Applications/Inlet.app" >/dev/null 2>&1 &
+  fi
+fi
+exit 0

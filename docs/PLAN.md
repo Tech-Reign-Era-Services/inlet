@@ -121,6 +121,7 @@ test/
 | v1.4 | Suggested rules learned from Organize corrections. A suggestion needs 2+ files agreeing at least 80% of the time; taking an extension from another category needs 5. Accepting can be undone, dismissing is remembered. | ✅ Done |
 | v1.5 | Learn from files moved by hand in Finder: into another Inlet folder counts as a correction (feeds suggestions), back into Downloads means auto mode leaves it alone. | ✅ Done |
 | v1.5 | Unsigned DMG (`npm run dist`) with install instructions. | ✅ Done |
+| v1.7 | One universal installer (`.pkg`, Apple silicon + Intel) with welcome, license and summary pages; opens Inlet when done. | ✅ Done |
 | — | Signed and notarized DMG, and auto-update. | ⏸ On hold: needs an Apple Developer account ($99/yr). Auto-update on macOS requires a signed app, so it's on hold too. |
 | v2 | In-app release notes (What's new); rule sync between Macs through a shared file (iCloud Drive/Dropbox), plus export/import. | ✅ Done |
 
@@ -132,5 +133,5 @@ test/
 npm install
 npm start            # run in dev
 npm test             # unit tests (no Electron needed)
-npm run dist         # build a .dmg with electron-builder (unsigned)
+npm run dist         # build the universal .pkg installer (unsigned)
 ```

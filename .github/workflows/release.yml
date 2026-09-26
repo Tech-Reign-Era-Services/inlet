@@ -1,4 +1,4 @@
-# Builds unsigned DMGs (Apple silicon + Intel) and attaches them to a draft GitHub release.
+# Builds the unsigned universal installer (.pkg, Apple silicon + Intel) and attaches it to a draft GitHub release.
 # Push a tag like v1.6.0 to run it, or start it by hand from the Actions tab with a tag name.
 name: Release
 
@@ -41,12 +41,12 @@ jobs:
 
       - run: npm run dist
 
-      - name: Attach DMGs to a draft release
+      - name: Attach the installer to a draft release
         run: |
           VERSION="${TAG#v}"
           sed "s/VERSION/$VERSION/g" .github/release-notes.md > notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/*.dmg --clobber
+            gh release upload "$TAG" dist/*.pkg --clobber
           else
-            gh release create "$TAG" dist/*.dmg --draft --title "Inlet $VERSION" --notes-file notes.md
+            gh release create "$TAG" dist/*.pkg --draft --title "Inlet $VERSION" --notes-file notes.md
           fi
