@@ -20,6 +20,7 @@ const S = {
   stale: null, // null = not scanned yet
   dupes: null,
   cleanupLoading: false,
+  find: { text: '', query: null, results: [], notes: [], busy: false, selected: new Set(), everywhere: false, includeCode: false, codeLeftOut: false, ran: false, took: 0 },
   cleanupDeselected: new Set(), // stale: unticked paths
   keepers: {}, // duplicates: hash → path to keep
 };
@@ -120,6 +121,7 @@ const PSEUDO = {
   rule: { id: 'rule', name: 'Custom rule', icon: 'rules', color: '#5E5CE6' },
   old: { id: 'old', name: 'Old Downloads', icon: 'archive', color: '#AC8E68' },
   removed: { id: 'removed', name: 'Removed', icon: 'trash', color: '#FF453A' },
+  gathered: { id: 'gathered', name: 'Gathered', icon: 'search', color: '#3d63f5' },
 };
 const cats = () => S.st.settings.categories;
 const cat = (id) => cats().find((c) => c.id === id) || PSEUDO[id] || PSEUDO.rule;
@@ -262,6 +264,7 @@ const TRIGGER_TIPS = { manual: 'Tidied by you', auto: 'Sorted by Auto mode', sch
 
 const PAGES = {
   overview: { title: 'Overview', icon: 'overview', render: renderOverview },
+  find: { title: 'Find', icon: 'search', render: renderFind },
   organize: { title: 'Organize', icon: 'organize', render: renderOrganize },
   cleanup: { title: 'Cleanup', icon: 'trash', render: renderCleanup },
   rules: { title: 'Rules', icon: 'rules', render: renderRules },
@@ -274,6 +277,7 @@ function navigate(page) {
   S.page = page;
   if (page === 'activity') api.getHistory().then((b) => { S.history = b; render(); });
   if (page === 'cleanup') loadCleanup(false);
+  if (page === 'find') setTimeout(() => document.querySelector('.find-input')?.focus(), 50);
   render();
   $('content').scrollTop = 0;
 }
@@ -314,6 +318,7 @@ function render() {
   $('content').replaceChildren(wrap);
   $('content').scrollTop = scroll;
   S.lastPage = S.page;
+  if (S.page === 'find') renderFindResults();
   loadThumbs();
 }
 
@@ -843,6 +848,7 @@ const TRIGGERS = {
   auto: { icon: 'bolt', verb: 'Auto-sorted' },
   scheduled: { icon: 'activity', verb: 'Scheduled tidy ·' },
   cleanup: { icon: 'trash', verb: 'Cleaned up' },
+  gather: { icon: 'search', verb: 'Gathered' },
 };
 const isArchive = (b) => b.trigger === 'cleanup' && b.moves.every((m) => m.kind !== 'remove');
 function batchTitle(b) {
@@ -876,7 +882,167 @@ async function undoLast() {
   await refreshScan(true);
   render();
 }
-const batchVerb = (t) => ({ manual: 'tidy', auto: 'auto-sort', scheduled: 'scheduled tidy', cleanup: 'cleanup' }[t]);
+const batchVerb = (t) => ({ manual: 'tidy', auto: 'auto-sort', scheduled: 'scheduled tidy', cleanup: 'cleanup', gather: 'gather' }[t] || 'last action');
+
+// ---------- find ----------
+
+const FIND_EXAMPLES = [
+  'pdfs from github last week',
+  'screenshots from yesterday',
+  'big videos I haven’t opened in a month',
+  'files downloaded with Chrome',
+  'airdropped photos',
+  'spreadsheets from this year',
+  'what did Inlet move today',
+];
+
+let findTimer = null;
+let findSeq = 0;
+async function runFind(opts = {}) {
+  const F = S.find;
+  const seq = ++findSeq;
+  F.busy = true;
+  renderFindResults();
+  const res = await api.find({ everywhere: F.everywhere, includeCode: F.includeCode, ...opts });
+  if (seq !== findSeq) return; // a newer search started while this one ran
+  Object.assign(F, { busy: false, ran: !res.empty, query: res.query, results: res.results || [], notes: res.notes || [], took: res.took || 0, codeLeftOut: !!res.codeLeftOut });
+  F.selected = new Set([...F.selected].filter((p) => F.results.some((r) => r.path === p)));
+  renderFindResults();
+}
+
+function renderFind() {
+  const F = S.find;
+  const input = h('input', {
+    class: 'find-input', type: 'search', value: F.text, spellcheck: false, autocomplete: 'off',
+    placeholder: 'Describe the file, e.g. “pdfs from github last week”',
+    'aria-label': 'Describe what you’re looking for',
+    oninput: (e) => {
+      F.text = e.target.value;
+      clearTimeout(findTimer);
+      if (!F.text.trim()) {
+        findSeq++; // a search still running for the old text must not fill the cleared page
+        Object.assign(F, { busy: false, ran: false, results: [], query: null, notes: [] });
+        renderFindResults();
+        return;
+      }
+      findTimer = setTimeout(() => runFind({ text: F.text }), 450);
+    },
+    onkeydown: (e) => {
+      if (e.key === 'Enter') { clearTimeout(findTimer); if (F.text.trim()) runFind({ text: F.text }); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); document.querySelector('.find-row')?.focus(); }
+    },
+  });
+  const box = h('div', { class: 'find-box' }, icon('search', 20), input);
+  const options = h('div', { class: 'find-options' },
+    h('label', { class: 'find-toggle' },
+      h('input', { type: 'checkbox', checked: F.everywhere, onchange: (e) => { F.everywhere = e.target.checked; if (F.text.trim()) runFind({ text: F.text }); } }),
+      ' Search my whole home folder, not just watched folders'));
+  return {
+    sub: 'Describe what you’re looking for: what it is, where it came from, when you got it, what’s inside. Everything stays on this Mac.',
+    actions: [],
+    body: [box, options, h('div', { id: 'find-results' })],
+  };
+}
+
+function renderFindResults() {
+  const host = document.getElementById('find-results');
+  if (!host) return;
+  const F = S.find;
+  const parts = [];
+
+  if (F.query && F.query.chips?.length) {
+    parts.push(h('div', { class: 'find-chips' },
+      h('span', { class: 'faint', style: { fontSize: '12px', marginRight: '4px' } }, 'Looking for'),
+      F.query.chips.map((c) => h('span', { class: 'find-chip' }, icon(c.icon, 12), c.label,
+        h('button', { title: 'Remove this', 'aria-label': `Remove ${c.label}`, onclick: () => runFind({ query: F.query, remove: c.key }) }, icon('x', 10))))));
+  }
+  for (const n of F.notes) parts.push(h('div', { class: 'find-note' }, icon('shield', 13), n));
+  if (F.codeLeftOut && !F.includeCode) {
+    parts.push(h('div', {}, button('Include code projects', () => { F.includeCode = true; runFind({ query: F.query }); }, { cls: 'sm ghost', iconName: 'code' })));
+  }
+
+  if (F.busy) {
+    parts.push(h('div', { class: 'find-status' }, h('span', { class: 'spinner' }), 'Searching…'));
+  } else if (!F.ran) {
+    parts.push(h('div', { class: 'find-examples' },
+      h('div', { class: 'faint', style: { fontSize: '12px', marginBottom: '8px' } }, 'Try'),
+      h('div', { class: 'chips' }, FIND_EXAMPLES.map((ex) => h('button', { class: 'filter', onclick: () => {
+        F.text = ex; const inp = document.querySelector('.find-input'); if (inp) inp.value = ex; runFind({ text: ex });
+      } }, ex)))));
+  } else if (!F.results.length) {
+    parts.push(h('div', { class: 'card empty' }, h('h3', {}, 'Nothing matched'),
+      h('p', {}, F.query?.chips?.length > 1 ? 'Try removing one of the details above.' : 'Try describing it differently: what kind of file, where it came from, or roughly when.')));
+  } else {
+    parts.push(h('div', { class: 'find-count faint' }, `${plural(F.results.length, 'file')}${F.results.length >= 300 ? ' (showing the best 300)' : ''} · ${(F.took / 1000).toFixed(1)} s`));
+    parts.push(h('div', { class: 'card find-list' }, F.results.map((r) => findRow(r))));
+    if (F.selected.size) parts.push(findBar());
+  }
+  host.replaceChildren(...parts);
+  loadThumbs();
+}
+
+function findRow(r) {
+  const F = S.find;
+  const on = F.selected.has(r.path);
+  const toggle = () => { if (F.selected.has(r.path)) F.selected.delete(r.path); else F.selected.add(r.path); renderFindResults(); };
+  const date = new Date(r.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: new Date(r.date).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  const row = h('div', {
+    class: `find-row ${on ? 'on' : ''}`, tabindex: '0', draggable: 'true',
+    ondblclick: () => api.openPath(r.path),
+    ondragstart: (e) => { e.preventDefault(); api.startDrag(r.path); },
+    onkeydown: (e) => {
+      if (e.key === ' ') { e.preventDefault(); api.preview(r.path); }
+      else if (e.key === 'Enter' && e.metaKey) api.reveal(r.path);
+      else if (e.key === 'Enter') api.openPath(r.path);
+      else if (e.key === 'ArrowDown') { e.preventDefault(); e.currentTarget.nextElementSibling?.focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); (e.currentTarget.previousElementSibling || document.querySelector('.find-input'))?.focus(); }
+      else if (e.key.toLowerCase() === 'x') toggle();
+    },
+  },
+  h('input', { type: 'checkbox', class: 'checkbox', checked: on, 'aria-label': `Select ${r.name}`, onclick: (e) => e.stopPropagation(), onchange: toggle }),
+  h('div', { class: 'thumb', 'data-path': r.path }, catIcon(r.isDir ? PSEUDO.folders : PSEUDO.gathered, 15)),
+  h('div', { style: { minWidth: 0 } },
+    h('div', { class: 'file-name', title: r.path }, r.name),
+    h('div', { class: 'file-meta' }, h('span', {}, icon('folder', 11), ' ', r.where), '·', h('span', {}, date), !r.isDir && ['·', h('span', {}, fmtBytes(r.size))],
+      originBits(r.origin, ''))),
+  h('div', { class: 'find-why', title: r.reasons.join(' · ') }, r.reasons.join(' · ')),
+  h('div', { class: 'row-actions find-acts' },
+    iconButton('search', 'Quick Look (Space)', () => api.preview(r.path)),
+    iconButton('reveal', 'Show in Finder (⌘↩)', () => api.reveal(r.path))));
+  return row;
+}
+
+function findBar() {
+  const F = S.find;
+  const paths = [...F.selected];
+  return h('div', { class: 'sticky-bar' },
+    h('div', {}, h('b', {}, `${paths.length} selected`),
+      h('button', { class: 'link-btn', style: { marginLeft: '10px' }, onclick: () => { F.results.forEach((r) => F.selected.add(r.path)); renderFindResults(); } }, 'Select all'),
+      h('button', { class: 'link-btn', style: { marginLeft: '10px' }, onclick: () => { F.selected.clear(); renderFindResults(); } }, 'Clear')),
+    h('div', { class: 'inline' },
+      button('Copy paths', async () => { await navigator.clipboard.writeText(paths.join('\n')); toast(`Copied ${plural(paths.length, 'path')}`); }, { cls: 'ghost' }),
+      button('Show in Finder', () => paths.slice(0, 10).forEach((p) => api.reveal(p))),
+      button('Gather into a folder…', () => gatherDialog(paths), { cls: 'primary', iconName: 'folder' })));
+}
+
+function gatherDialog(paths) {
+  const F = S.find;
+  const suggested = (F.text || 'Found files').replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 40);
+  const nameInput = h('input', { class: 'input', value: suggested[0] ? suggested[0].toUpperCase() + suggested.slice(1) : 'Found files' });
+  openModal({
+    title: `Gather ${plural(paths.length, 'file')} into a folder`,
+    sub: 'They move into Downloads → Gathered → this folder. You can undo it from Activity or with ⌘Z.',
+    body: h('div', { class: 'field' }, h('label', {}, 'Folder name'), nameInput),
+    foot: [button('Cancel', closeModal, { cls: 'ghost' }), button('Gather', async () => {
+      closeModal();
+      const batch = await api.gather({ paths, name: nameInput.value });
+      F.selected.clear();
+      await runFind({ query: F.query });
+      toast(`Gathered ${plural(batch.moves.length, 'file')}`, { action: { label: 'Show', fn: () => api.reveal(batch.moves[0]?.to || batch.dest) }, ms: 8000 });
+      if (batch.errors?.length) toast(`${plural(batch.errors.length, 'file')} couldn’t be moved`, { error: true });
+    }, { cls: 'primary' })],
+  });
+}
 
 // ---------- suggestions ----------
 

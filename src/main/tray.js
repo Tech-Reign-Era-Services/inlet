@@ -23,7 +23,7 @@ class TrayController {
     const { mode } = this.actions.getSettings();
     const unsorted = this.actions.getUnsorted();
     const undoable = this.actions.getUndoable();
-    const undoWhat = { auto: 'Auto-Sort', scheduled: 'Scheduled Inlet', cleanup: 'Cleanup' };
+    const undoWhat = { auto: 'Auto-Sort', scheduled: 'Scheduled Tidy', cleanup: 'Cleanup', gather: 'Gather' };
     const auto = mode === 'auto';
     this.tray.setTitle(!auto && unsorted > 0 ? ` ${unsorted}` : '', { fontType: 'monospacedDigit' });
     this.tray.setContextMenu(Menu.buildFromTemplate([

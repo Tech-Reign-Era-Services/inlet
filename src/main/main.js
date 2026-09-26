@@ -14,6 +14,8 @@ const finder = require('./finder');
 const portable = require('./portable');
 const changelog = require('./changelog');
 const provenance = require('./provenance');
+const findParse = require('./find/parse');
+const findSearch = require('./find/search');
 const { Ledger, summary: originSummary } = require('./ledger');
 const { classify, ruleMatches, renderName, reservedNames, OLD_FILES_FOLDER } = require('./classifier');
 const { TrayController } = require('./tray');
@@ -39,6 +41,7 @@ function migrateFromTidy() {
 }
 // From package.json, not app.getVersion(): that returns Electron's version when launched unpackaged from a script.
 const APP_VERSION = require('../../package.json').version;
+const GATHER_FOLDER = 'Gathered'; // Find → "Gather into a folder" puts files in Downloads/Gathered/<name>
 if (!app.requestSingleInstanceLock()) app.quit();
 
 let store;
@@ -535,7 +538,8 @@ function buildMenu() {
     },
     {
       label: 'Go',
-      submenu: [go('overview', 1), go('organize', 2), go('cleanup', 3), go('rules', 4), go('activity', 5), go('settings', 6)],
+      submenu: [{ label: 'Find…', accelerator: 'CmdOrCtrl+F', click: () => showWindow('find') }, { type: 'separator' },
+        go('overview', 1), go('organize', 2), go('cleanup', 3), go('rules', 4), go('activity', 5), go('settings', 6)],
     },
     { role: 'windowMenu' },
     {
@@ -811,9 +815,45 @@ function registerIpc() {
     return url;
   });
 
+  // ----- Find -----
+  let findAllowed = new Set(); // paths shown in the latest Find results (the renderer may act on these)
+  let findRun = 0;
+  ipcMain.handle('find:run', async (_e, { text, query, remove, everywhere, includeCode } = {}) => {
+    const run = ++findRun;
+    let q = query || findParse.parse(text || '', {
+      categories: store.settings.categories,
+      folders: folders.watchedFolders(store.settings),
+    });
+    if (remove) q = findParse.withoutChip(q, remove);
+    if (findParse.isEmpty(q)) return { query: q, results: [], notes: q.notes || [], empty: true };
+    const res = await findSearch.search(q, { settings: store.settings, ledger, batches: store.history.batches, everywhere: !!everywhere, includeCode: !!includeCode });
+    // Only the newest search decides what the page may act on: a slower, older one finishing later must not.
+    if (run === findRun) findAllowed = new Set(res.results.map((r) => r.path));
+    return { ...res, query: { ...q, chips: findParse.chipsFor(q) } };
+  });
+  ipcMain.handle('find:gather', async (_e, { paths, name }) => {
+    const valid = (paths || []).filter((p) => findAllowed.has(p) && fs.existsSync(p));
+    const safe = String(name || '').replace(/[/:\\]/g, '-').replace(/^\.+/, '').trim().slice(0, 60) || `Found ${new Date().toISOString().slice(0, 10)}`;
+    const dest = path.join(store.settings.watchDir, GATHER_FOLDER, safe);
+    const batch = await runMoves(valid.map((p) => ({ path: p, dest, categoryId: 'gathered', reason: 'Gathered from Find' })), 'gather');
+    for (const m of batch.moves) { findAllowed.delete(m.from); findAllowed.add(m.to); }
+    return { ...batch, dest };
+  });
+  ipcMain.handle('find:preview', (_e, p) => { if (findAllowed.has(p) && win && !win.isDestroyed()) win.previewFile(p); });
+  // startDrag throws on an empty icon, so fall back to the menu bar icon (always shipped) if the app icon is missing.
+  const buildImage = (name) => nativeImage.createFromPath(path.join(__dirname, '..', '..', 'build', name));
+  let dragIcon = buildImage('icon.png');
+  if (dragIcon.isEmpty()) dragIcon = buildImage('trayTemplate@2x.png');
+  if (!dragIcon.isEmpty()) dragIcon = dragIcon.resize({ width: 48, height: 48 });
+  ipcMain.on('find:drag', (e, p) => {
+    if (!findAllowed.has(p) || dragIcon.isEmpty()) return;
+    try { e.sender.startDrag({ file: p, icon: dragIcon }); } catch (err) { console.error('[find drag]', err.message); }
+  });
+
   const knownPath = (p) => {
     const r = path.resolve(p);
     return !!folders.folderFor(store.settings, r)
+      || findAllowed.has(r)
       || store.history.batches.some((b) => b.moves.some((m) => m.to === r || m.from === r));
   };
   ipcMain.handle('file:reveal', (_e, p) => { if (fs.existsSync(p)) shell.showItemInFolder(p); });

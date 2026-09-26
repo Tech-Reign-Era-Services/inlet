@@ -37,7 +37,8 @@ function globToRegex(glob) {
 
 /** Top-level names inside the watched folder that Inlet itself owns — never sort these. */
 function reservedNames(settings) {
-  const names = new Set([FOLDERS_CATEGORY.folder.toLowerCase(), OLD_FILES_FOLDER.toLowerCase()]);
+  // Inlet's own folders: never sorted. "Gathered" holds files collected from Find.
+  const names = new Set([FOLDERS_CATEGORY.folder.toLowerCase(), OLD_FILES_FOLDER.toLowerCase(), 'gathered']);
   const add = (folder) => {
     const p = expandHome(String(folder || '').trim());
     if (!p) return;

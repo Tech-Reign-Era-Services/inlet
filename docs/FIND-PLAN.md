@@ -1,6 +1,6 @@
 # Find: ask for files in plain English (plan)
 
-Status: **Phase 1 (provenance ledger) built in 1.6.0.** Phases 2–5 are proposals. Research done 2026-09-25 on macOS 26.6.
+Status: **Phase 1 (provenance ledger) built in 1.6.0. Phase 2 (Find) built for 1.7.0.** Phases 3–5 are proposals. Research done 2026-09-25 on macOS 26.6.
 
 ## The goal
 
@@ -87,6 +87,8 @@ Three layers. The first always works.
 
    *Tested 2026-09-25 with Apple Intelligence on (macOS 26.6): about 1 s per request (4 s for the first). It got the gist of every request, but made up details: "last 10 days" and "over 5 MB" for an invoice request that said neither, and it called a zip an "installer". So keep any field only if the sentence contains evidence for it, prefer the parser when they disagree, and use guided generation (`@Generable`, built with Xcode in CI) rather than free-form JSON.*
 
+   *Tested again on harder sentences ("the thing my bank sent about taxes last spring", "the contract I signed in July"). With free-form JSON, the model echoed the prompt, dropped key words and invented sizes and dates ("in July" became "180 days ago"). It isn't used in 1.7.0. Revisit with `@Generable` guided generation (needs an Xcode build) and a test set.*
+
 3. **Show the interpretation as editable chips.** For example: `PDF` `from github.com` `last 7 days` ✕. People see what Inlet understood, and fix it with a click. There's no black box.
 
 **Not planned:** a cloud AI. It would break Inlet's "no network" promise. If there's demand, it could come later as an opt-in with your own API key, off by default.
@@ -146,7 +148,7 @@ sentence ─► parser (+ optional on-device model) ─► Query ─► planner 
 | Phase | What ships | Visible result |
 |---|---|---|
 | **1. Provenance ledger** ✅ 1.6.0 | Record on arrival (auto mode, scans, Organize), backfill, quarantine-ID families for unzipped files, "Downloaded from" in Organize and Activity, ledger controls in Settings | Inlet starts remembering where files came from |
-| **2. Find (built-in)** | Parser, planner, Spotlight + ledger + history sources, Find page, chips, "why it matched", open/reveal/gather (undoable) | Plain-English search on every Mac |
+| **2. Find (built-in)** ✅ 1.7.0 | Parser, planner, Spotlight + ledger + history sources, Find page, chips, "why it matched", open/reveal/gather (undoable) | Plain-English search on every Mac |
 | **3. More sources and actions** | Opt-in Chrome, Brave, Edge and Arc import, and Safari with Full Disk Access; Smart Folder export; rule from search; menu bar quick panel with shortcut | Finds sources for older files; search from anywhere |
 | **4. On-device model** | Swift helper built in CI, used when the parser is unsure; a test set of 150 real phrasings with a target of ≥ 90% correct | Handles messier sentences on Apple Intelligence Macs |
 | **5. Research** | "Search by meaning" with on-device embeddings (Apple's NaturalLanguage framework); decide based on Phase 2–4 feedback | Maybe |
@@ -154,6 +156,15 @@ sentence ─► parser (+ optional on-device model) ─► Query ─► planner 
 Phases 1 and 2 are the minimum useful version. Phase 1 should ship first even on its own, because every day without it is a day of sources that can never be recovered.
 
 ---
+
+## What building Phase 2 taught us
+
+- **`kMDItemDateAdded` resets when a file is moved,** including by Inlet. "Downloaded when" therefore uses the ledger's download time, then `kMDItemDownloadedDate`, then the file's creation date (which survives moves).
+- **mdfind only returns results when it finishes, and each scoped query has a fixed cost:** about 0.5 s per text query. One query per watched folder is fastest: 1 s for a text search across all of Downloads, versus 12 s folder by folder.
+- **Code projects hold hundreds of thousands of files** (631,000 in the test Downloads). They're detected by `node_modules`, `.git`, Xcode projects or virtualenvs within four levels. Text searches drop matches inside them afterwards. Broad searches ("never opened") skip them by searching the other folders one by one: 0.6 s instead of 27 s. People can include them with one click.
+- **Leftover words match any of them, not all of them.** Sentences carry stray words. Plurals are reduced to their singular form ("slips" also matches "Slip").
+- **`xattr` escapes spaces when reading several files** ("Google\x20Chrome"). Values are decoded, and older ledger records are repaired on load.
+- **Measured on real data:** most searches take 0.1–1.5 s; the slowest take up to 3 s.
 
 ## Testing
 
