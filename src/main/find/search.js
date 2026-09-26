@@ -410,13 +410,15 @@ async function search(query, ctxIn) {
   const dirs = scopes(ctx.settings, ctx.everywhere);
   const found = new Map(); // path → { f, reasons, score }
 
-  const add = (f, reasons, bonus = 0) => {
-    if (!f || !reasons || skipped(f.path, dirs) || found.has(f.path)) return;
+  // `ours`: a file from Inlet's own history. Removed files live in Inlet's hidden holding folder, so the
+  // hidden-folder rule mustn't hide them from "what did I remove".
+  const add = (f, reasons, bonus = 0, ours = false) => {
+    if (!f || !reasons || (!ours && skipped(f.path, dirs)) || found.has(f.path)) return;
     found.set(f.path, { f, reasons, score: reasons.length + bonus + (f.nameHits || 0) * 2 });
   };
 
   if (q.inletAction) {
-    for (const r of await fromHistory(q, ctx)) add(r.f, r.reasons, 1);
+    for (const r of await fromHistory(q, ctx)) add(r.f, r.reasons, 1, true);
     return finish(found, q, ctx, dirs, started);
   }
 

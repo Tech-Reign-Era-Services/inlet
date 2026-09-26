@@ -106,6 +106,18 @@ test('a watched folder inside a hidden or Library folder still returns results',
   assert.deepEqual(res.results.map((r) => r.name), ['headphones-invoice.txt']);
 });
 
+test('“what did I remove” finds files in Inlet’s hidden holding folder', { skip: process.platform !== 'darwin' }, async () => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'inlet-find-removed-')));
+  const settings = { ...defaultSettings(), watchDir: dir };
+  const old = path.join(dir, 'old-setup.dmg');
+  fs.writeFileSync(old, 'dmg');
+  // Cleanup's "remove" moves files into a hidden holding folder, so they can be undone.
+  const batch = await execute([{ path: old, dest: path.join(dir, '.Inlet Removed'), categoryId: 'installers', kind: 'remove' }], 'cleanup');
+  const res = await search(parse('what did i remove today', { categories }), { settings, ledger: null, batches: [batch] });
+  assert.deepEqual(res.results.map((r) => r.name), ['old-setup.dmg']);
+  assert.match(res.results[0].reasons[0], /Removed by Inlet/);
+});
+
 test('compiles to a Spotlight query', () => {
   const q = parse('pdfs from github about "tax return" over 2 MB', { categories, now });
   const s = toSpotlight(q, { categories });

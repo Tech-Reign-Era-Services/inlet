@@ -817,7 +817,9 @@ function registerIpc() {
 
   // ----- Find -----
   let findAllowed = new Set(); // paths shown in the latest Find results (the renderer may act on these)
+  let findRun = 0;
   ipcMain.handle('find:run', async (_e, { text, query, remove, everywhere, includeCode } = {}) => {
+    const run = ++findRun;
     let q = query || findParse.parse(text || '', {
       categories: store.settings.categories,
       folders: folders.watchedFolders(store.settings),
@@ -825,7 +827,8 @@ function registerIpc() {
     if (remove) q = findParse.withoutChip(q, remove);
     if (findParse.isEmpty(q)) return { query: q, results: [], notes: q.notes || [], empty: true };
     const res = await findSearch.search(q, { settings: store.settings, ledger, batches: store.history.batches, everywhere: !!everywhere, includeCode: !!includeCode });
-    findAllowed = new Set(res.results.map((r) => r.path));
+    // Only the newest search decides what the page may act on: a slower, older one finishing later must not.
+    if (run === findRun) findAllowed = new Set(res.results.map((r) => r.path));
     return { ...res, query: { ...q, chips: findParse.chipsFor(q) } };
   });
   ipcMain.handle('find:gather', async (_e, { paths, name }) => {
@@ -837,8 +840,15 @@ function registerIpc() {
     return { ...batch, dest };
   });
   ipcMain.handle('find:preview', (_e, p) => { if (findAllowed.has(p) && win && !win.isDestroyed()) win.previewFile(p); });
-  const dragIcon = nativeImage.createFromPath(path.join(__dirname, '..', '..', 'build', 'icon.png')).resize({ width: 48, height: 48 });
-  ipcMain.on('find:drag', (e, p) => { if (findAllowed.has(p)) e.sender.startDrag({ file: p, icon: dragIcon }); });
+  // startDrag throws on an empty icon, so fall back to the menu bar icon (always shipped) if the app icon is missing.
+  const buildImage = (name) => nativeImage.createFromPath(path.join(__dirname, '..', '..', 'build', name));
+  let dragIcon = buildImage('icon.png');
+  if (dragIcon.isEmpty()) dragIcon = buildImage('trayTemplate@2x.png');
+  if (!dragIcon.isEmpty()) dragIcon = dragIcon.resize({ width: 48, height: 48 });
+  ipcMain.on('find:drag', (e, p) => {
+    if (!findAllowed.has(p) || dragIcon.isEmpty()) return;
+    try { e.sender.startDrag({ file: p, icon: dragIcon }); } catch (err) { console.error('[find drag]', err.message); }
+  });
 
   const knownPath = (p) => {
     const r = path.resolve(p);

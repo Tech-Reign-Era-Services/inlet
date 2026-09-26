@@ -46,6 +46,7 @@
     "files": [
       "src/**/*",
       "build/tray*.png",
+      "build/icon.png",
       "package.json"
     ],
     "dmg": {
