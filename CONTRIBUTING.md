@@ -57,7 +57,7 @@ These keep people's files safe. Pull requests that break them won't be merged.
 2. **Never overwrite.** Name clashes become `name (1).ext`. Use `uniqueDest()` in `organizer.js`.
 3. **Everything is undoable.** Any new action that moves files must be recorded in history, so Activity, ⌘Z and the menu bar can undo it.
 4. **Leave folders and half-finished downloads alone** unless the user opted in.
-5. **No network, no tracking.** Inlet doesn't phone home, and new code mustn't either.
+5. **No network, no tracking.** The one exception is the update check in `src/main/updates.js`: it asks GitHub for the latest release, sends nothing about the user, and can be turned off. New code mustn't add any other network requests.
 6. **Stay safe in the interface.** File names are untrusted: build elements with `h()`/`textContent`, never `innerHTML`. Keep `contextIsolation`, `sandbox` and the content security policy as they are.
 7. **Manual mode stays the default.** Nothing should move on its own until the user turns on Auto mode or a schedule.
 

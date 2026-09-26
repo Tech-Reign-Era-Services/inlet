@@ -9,7 +9,7 @@ function iconPath() {
 }
 
 class TrayController {
-  /** actions: { getSettings, getUnsorted, getUndoable, setMode, tidyNow, undoLast, show, shelf, showShelf, quit } */
+  /** actions: { getSettings, getUnsorted, getUndoable, setMode, tidyNow, undoLast, show, shelf, showShelf, getUpdate, showUpdate, quit } */
   constructor(actions) {
     this.actions = actions;
     const image = nativeImage.createFromPath(iconPath());
@@ -26,8 +26,14 @@ class TrayController {
     const undoWhat = { auto: 'Auto-Sort', scheduled: 'Scheduled Tidy', cleanup: 'Cleanup', gather: 'Gather' };
     const auto = mode === 'auto';
     const shelf = this.actions.shelf();
+    const update = this.actions.getUpdate();
+    const updateItems = update.show ? [
+      { label: update.status === 'downloading' ? `Downloading Inlet ${update.latest.version}…` : `Update to Inlet ${update.latest.version}…`, click: () => this.actions.showUpdate() },
+      { type: 'separator' },
+    ] : [];
     this.tray.setTitle(!auto && unsorted > 0 ? ` ${unsorted}` : '', { fontType: 'monospacedDigit' });
     this.tray.setContextMenu(Menu.buildFromTemplate([
+      ...updateItems,
       { label: auto ? 'Auto mode — sorting new downloads' : `Manual mode — ${unsorted || 'no'} unsorted file${unsorted === 1 ? '' : 's'}`, enabled: false },
       { type: 'separator' },
       { label: 'Tidy Now', accelerator: 'Command+T', enabled: unsorted > 0, click: () => this.actions.tidyNow() },

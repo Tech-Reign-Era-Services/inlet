@@ -3,6 +3,16 @@
 // Shown in "What's new" after an update (newest first). Keep entries short and user-facing.
 module.exports = [
   {
+    version: '1.9.0',
+    title: 'Updates, right in the app',
+    items: [
+      'Inlet now tells you when a new version is out, with what’s new, in a card in the sidebar and in the menu bar.',
+      'Click Update: Inlet downloads the installer, checks it matches the release on GitHub, and opens it. Your settings, rules and history are kept.',
+      'Not now? Choose Later, or Skip this version. Or check any time with Inlet → Check for Updates….',
+      'The only thing Inlet asks the internet is whether there’s a new version. Nothing about you or your files is sent. Turn it off in Settings → Updates.',
+    ],
+  },
+  {
     version: '1.8.0',
     title: 'The Shelf',
     items: [

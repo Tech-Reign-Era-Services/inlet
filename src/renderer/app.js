@@ -290,7 +290,7 @@ function renderChrome() {
   id === 'rules' && (S.st.suggestions || []).length > 0 && h('span', { class: 'badge soft', title: 'Suggested rules' }, S.st.suggestions.length))));
 
   const auto = S.st.settings.mode === 'auto';
-  $('mode-card').replaceChildren(h('div', { class: 'mode-card' },
+  $('mode-card').replaceChildren(updateCard() || '', h('div', { class: 'mode-card' },
     h('div', { class: 'mode-card-row' },
       h('span', { class: `pulse ${auto && S.st.autoRunning ? 'on' : ''}`, title: auto && S.st.autoRunning ? 'Watching for new downloads' : 'Not watching. Files only move when you tidy.' }),
       h('span', { class: 'mode-card-title', style: { flex: 1 } }, auto ? 'Auto mode' : 'Manual mode'),
@@ -1267,6 +1267,7 @@ function renderSettings() {
         row('Launch at login', 'Start Inlet quietly in the menu bar when you log in. Takes effect in the installed app.', toggle(s.launchAtLogin, (v) => saveSettings({ launchAtLogin: v }))),
         row('Show in Dock', 'Turn off to keep Inlet in the menu bar only.', toggle(s.showDockIcon, (v) => saveSettings({ showDockIcon: v }))),
         row('Notifications', 'Get a notification when Auto mode sorts something.', toggle(s.notifications, (v) => saveSettings({ notifications: v }))))),
+      h('div', {}, ...group('Updates', ...updateRows(row))),
       h('div', {}, ...group('Shelf',
         row('Shelf at the top of the screen', 'A place to keep files, text and links for a moment. Drop them on the notch (or the middle of the menu bar), then drag them out or paste them anywhere. Files stay where they are; the Shelf only points to them.',
           toggle(s.shelfEnabled !== false, (v) => saveSettings({ shelfEnabled: v }))),
@@ -1447,6 +1448,91 @@ async function setUpSync() {
   });
 }
 
+// ---------- updates ----------
+
+const pct = (p) => `${Math.round((p || 0) * 100)}%`;
+
+/** The sidebar card shown while an update is available, downloading or opening. */
+function updateCard() {
+  const u = S.st.update;
+  if (!u || !u.show) return null;
+  const v = u.latest.version;
+  const bar = () => h('div', { class: 'upd-track' }, h('div', { class: 'upd-fill', style: { width: pct(u.progress) } }));
+  let body;
+  if (u.status === 'downloading') {
+    body = [h('div', { class: 'upd-title' }, `Downloading Inlet ${v}`), bar(), h('div', { class: 'upd-sub' }, h('span', { class: 'upd-pct' }, pct(u.progress)), ' · checked against GitHub when done')];
+  } else if (u.status === 'installing') {
+    body = [h('div', { class: 'upd-title' }, 'Opening the installer'), h('div', { class: 'upd-sub' }, 'Follow its steps. It asks to quit Inlet, then opens the new version.')];
+  } else if (u.status === 'error' && u.error) {
+    body = [h('div', { class: 'upd-title' }, 'The update didn’t finish'), h('div', { class: 'upd-sub' }, u.error),
+      h('div', { class: 'upd-actions' }, button('Try again', () => startUpdate(), { cls: 'primary sm' }))];
+  } else {
+    body = [h('div', { class: 'upd-title' }, `Inlet ${v} is available`),
+      h('div', { class: 'upd-sub' }, `You have ${u.current} · `, h('button', { class: 'link-btn upd-link', onclick: () => showUpdate() }, 'What’s new')),
+      h('div', { class: 'upd-actions' }, button('Update', () => startUpdate(), { cls: 'primary sm', iconName: 'download' }))];
+  }
+  return h('div', { class: `update-card ${u.status}` },
+    h('span', { class: 'upd-icon' }, icon(u.status === 'error' ? 'x' : 'sparkle', 15)),
+    h('div', { class: 'upd-main' }, body),
+    !['downloading', 'installing'].includes(u.status) && iconButton('x', 'Remind me later', async () => { S.st = await api.laterUpdate(); renderChrome(); }, 'upd-close'));
+}
+
+async function startUpdate() {
+  closeModal();
+  const u = S.st.update;
+  if (!u.latest.asset) { api.openUpdateNotes(); return; } // no installer attached: send them to the release page
+  S.st = await api.installUpdate();
+  renderChrome();
+}
+
+/** What's in the new version, with Update now / Later / Skip. */
+function showUpdate() {
+  const u = S.st.update;
+  if (!u || !u.latest) return;
+  const { latest } = u;
+  const when = latest.publishedAt ? ` Released ${new Date(latest.publishedAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}.` : '';
+  openModal({
+    title: `Inlet ${latest.version} is available`,
+    sub: `You have ${u.current}.${when}`,
+    cls: 'update-modal',
+    body: [
+      latest.notes.length
+        ? h('ul', { class: 'upd-notes' }, latest.notes.map((n) => h('li', {}, n)))
+        : h('p', { class: 'muted' }, 'See the release notes for what’s changed.'),
+      h('button', { class: 'link-btn', onclick: () => api.openUpdateNotes() }, 'Full release notes on GitHub'),
+      h('p', { class: 'faint upd-how' }, latest.asset
+        ? `Inlet downloads the installer (${fmtBytes(latest.asset.size)}), checks it matches the release, and opens it. Your settings, rules and history are kept.`
+        : 'This release has no installer attached yet. Update opens the release page.'),
+    ],
+    foot: [
+      h('button', { class: 'link-btn upd-skip', onclick: async () => { S.st = await api.skipUpdate(); closeModal(); render(); toast(`You won’t be reminded about ${latest.version}`); } }, 'Skip this version'),
+      button('Later', async () => { S.st = await api.laterUpdate(); closeModal(); renderChrome(); }, { cls: 'ghost' }),
+      button('Update now', () => startUpdate(), { cls: 'primary', iconName: 'download' }),
+    ],
+  });
+}
+
+function updateRows(row) {
+  const u = S.st.update || {};
+  const s = S.st.settings;
+  let status;
+  let control;
+  if (u.status === 'checking') { status = 'Checking…'; control = button('Check now', null, { cls: 'sm', disabled: true }); }
+  else if (u.latest && ['available', 'downloading', 'installing'].includes(u.status) || (u.status === 'error' && u.latest && u.error && !u.error.startsWith('Couldn’t reach'))) {
+    status = u.status === 'downloading' ? `Downloading Inlet ${u.latest.version}… ${pct(u.progress)}` : `Inlet ${u.latest.version} is available.${u.skipped ? ' You chose to skip it.' : ''}`;
+    control = button(`Update to ${u.latest.version}`, () => startUpdate(), { cls: 'primary sm', iconName: 'download', disabled: ['downloading', 'installing'].includes(u.status) });
+  } else {
+    status = u.status === 'error' ? u.error
+      : u.checkedAt ? `Inlet ${S.st.version} is up to date. Checked ${fmtAgo(u.checkedAt)}.` : `You have Inlet ${S.st.version}.`;
+    control = button('Check now', async () => { S.st = await api.checkUpdate(); render(); }, { cls: 'sm' });
+  }
+  return [
+    row('Check for updates automatically', 'Inlet asks GitHub if there’s a new version when it starts and a few times a day. That’s all it asks: nothing about you or your files is sent.',
+      toggle(s.updateCheck !== false, (v) => saveSettings({ updateCheck: v }))),
+    row('Version', status, control),
+  ];
+}
+
 function showWhatsNew(entries, markSeen = true) {
   if (!entries || !entries.length) return;
   openModal({
@@ -1517,6 +1603,12 @@ async function boot() {
     if (!typing) render(); else renderChrome();
   });
   api.onNavigate((page) => { closeModal(); navigate(page); });
+  api.onUpdateShow(() => showUpdate());
+  api.onUpdateProgress((p) => {
+    if (S.st.update) S.st.update.progress = p;
+    document.querySelectorAll('.upd-fill').forEach((el) => { el.style.width = pct(p); });
+    document.querySelectorAll('.upd-pct').forEach((el) => { el.textContent = pct(p); });
+  });
   // ⌘Z: undo typing inside a text field, otherwise undo Inlet's last action.
   api.onMenuUndo(() => {
     const el = document.activeElement;

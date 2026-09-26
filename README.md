@@ -32,7 +32,7 @@ Inlet is free and not signed with a paid Apple Developer certificate, so macOS a
 
 ### Update or uninstall
 
-- **Update:** run the new installer. It asks you to quit Inlet first, then replaces it. Your settings and history are kept.
+- **Update:** when a new version is out, Inlet tells you. Click **Update** and it downloads the installer, checks it matches the release, and opens it. Or choose **Inlet → Check for Updates…**, or run the new installer yourself. It asks you to quit Inlet first, then replaces it. Your settings and history are kept.
 - **Uninstall:** quit Inlet from its menu bar icon and move it from Applications to the Trash. To remove its settings and history too, delete `~/Library/Application Support/Inlet`.
 
 When Inlet first reads your Downloads folder, macOS asks for permission. Click **Allow**.
@@ -96,7 +96,7 @@ Sometimes you collect things from several places and drop them somewhere else on
 
 - **Nothing is deleted or overwritten.** Inlet only moves files. A name clash becomes `report (1).pdf`.
 - **Everything is undoable,** from the Activity page, the menu bar, or ⌘Z.
-- **Everything stays on your Mac.** Inlet never connects to the internet.
+- **Everything stays on your Mac.** The only thing Inlet ever asks the internet is whether there's a new version (from GitHub, sending nothing about you or your files), and you can turn that off in **Settings → Updates**.
 
 ![Activity and undo](docs/screenshots/activity.png)
 
