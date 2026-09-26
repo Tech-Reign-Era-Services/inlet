@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inlet: free Downloads folder organizer for Mac</title>
+<meta name="description" content="Inlet is a free, open-source Mac app that sorts your Downloads folder automatically and finds any file you describe, like “pdfs from github last week”. Nothing is deleted, everything can be undone, and your files never leave your Mac.">
+<link rel="canonical" href="https://tech-reign-era-services.github.io/inlet/">
+<meta name="theme-color" content="#fbfbfd" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1c20" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Inlet">
+<meta property="og:title" content="Inlet: your Downloads folder, sorted. Any file, found.">
+<meta property="og:description" content="A free, open-source Mac app that tidies Downloads as files arrive and finds anything you describe. Undo everything. Nothing leaves your Mac.">
+<meta property="og:url" content="https://tech-reign-era-services.github.io/inlet/">
+<meta property="og:image" content="https://tech-reign-era-services.github.io/inlet/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Inlet, a free Downloads organizer for Mac, showing its Overview screen">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Inlet: your Downloads folder, sorted. Any file, found.">
+<meta name="twitter:description" content="A free, open-source Mac app that tidies Downloads as files arrive and finds anything you describe.">
+<meta name="twitter:image" content="https://tech-reign-era-services.github.io/inlet/assets/og.png">
+
+<link rel="icon" href="favicon.ico" sizes="32x32">
+<link rel="icon" href="assets/favicon-64.png" type="image/png" sizes="64x64">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preload" as="image" href="assets/hero-poster.webp" type="image/webp">
+<link rel="stylesheet" href="styles.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Inlet",
+  "description": "A free, open-source Mac app that keeps your Downloads folder clean and finds any file you describe.",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "macOS 13 or later",
+  "softwareVersion": "1.7.0",
+  "url": "https://tech-reign-era-services.github.io/inlet/",
+  "downloadUrl": "https://github.com/Tech-Reign-Era-Services/inlet/releases/latest",
+  "image": "https://tech-reign-era-services.github.io/inlet/assets/og.png",
+  "screenshot": "https://tech-reign-era-services.github.io/inlet/assets/overview.webp",
+  "video": {
+    "@type": "VideoObject",
+    "name": "Inlet in 22 seconds",
+    "description": "Inlet sorts a messy Downloads folder into folders, finds PDFs from a description, and undoes a move with Command-Z.",
+    "thumbnailUrl": "https://tech-reign-era-services.github.io/inlet/assets/hero-poster.jpg",
+    "contentUrl": "https://tech-reign-era-services.github.io/inlet/assets/hero.mp4",
+    "uploadDate": "2026-09-26",
+    "duration": "PT22S"
+  },
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Organization", "name": "Tech Reign Era Services", "url": "https://github.com/Tech-Reign-Era-Services" }
+}
+</script>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="top">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Inlet home">
+      <img src="assets/icon-256.png" alt="" width="32" height="32">
+      <span>Inlet</span>
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#tidy">Tidy</a>
+      <a href="#find">Find</a>
+      <a href="#safety">Safety</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="nav-actions">
+      <a class="gh-link" href="https://github.com/Tech-Reign-Era-Services/inlet" aria-label="Inlet on GitHub">
+        <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      </a>
+      <a class="btn btn-sm btn-primary" href="https://github.com/Tech-Reign-Era-Services/inlet/releases/latest" data-download>Download</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">Free &amp; open source · for Mac</p>
+        <h1>Your Downloads folder, sorted. <span class="accent">Any file, found.</span></h1>
+        <p class="lede">Inlet files every download into the right folder the moment it finishes, and finds anything you describe, like <q>pdfs from github last week</q>. Nothing is ever deleted, everything can be undone, and your files never leave your Mac.</p>
+        <div class="cta-row">
+          <a class="btn btn-lg btn-primary" href="https://github.com/Tech-Reign-Era-Services/inlet/releases/latest" data-download>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" class="apple"><path fill="currentColor" d="M16.37 12.63c-.02-2.26 1.85-3.35 1.93-3.4-1.05-1.54-2.69-1.75-3.27-1.77-1.39-.14-2.72.82-3.42.82-.71 0-1.8-.8-2.96-.78-1.52.02-2.93.89-3.71 2.25-1.58 2.75-.4 6.81 1.14 9.04.75 1.09 1.65 2.31 2.82 2.27 1.13-.05 1.56-.73 2.93-.73 1.36 0 1.75.73 2.95.71 1.22-.02 1.99-1.11 2.73-2.2.86-1.26 1.22-2.49 1.24-2.55-.03-.01-2.37-.91-2.38-3.61v-.05ZM14.12 5.98c.62-.76 1.04-1.8.93-2.85-.9.04-1.99.6-2.63 1.35-.58.67-1.08 1.74-.95 2.77 1 .08 2.03-.51 2.65-1.27Z"/></svg>
+            Download for Mac
+          </a>
+          <a class="btn btn-lg btn-ghost" href="https://github.com/Tech-Reign-Era-Services/inlet">View on GitHub</a>
+        </div>
+        <p class="fineprint" data-release-meta>Free · One installer for Apple silicon and Intel · macOS 13 Ventura or later</p>
+        <p class="not-mac" hidden>Inlet is a Mac app. Open this page on your Mac to download it, or <button type="button" class="linklike" data-copy-link>copy the link</button>.</p>
+      </div>
+      <div class="hero-visual">
+        <figure class="hero-video">
+          <video autoplay muted loop playsinline preload="auto" width="1920" height="1080" poster="assets/hero-poster.webp" aria-label="Inlet sorting a messy Downloads folder into folders, finding PDFs from a description, and undoing a move with Command-Z." data-hero-video>
+            <source src="assets/hero.webm" type="video/webm">
+            <source src="assets/hero.mp4" type="video/mp4">
+            <img src="assets/hero-poster.jpg" width="1920" height="1080" alt="Inlet's Find page: typing “pdfs from github last week” shows two matching PDFs and why each matched.">
+          </video>
+          <button type="button" class="video-toggle" data-video-toggle aria-label="Pause video">
+            <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+            <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
+          </button>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trust strip -->
+  <section class="trust" aria-label="Promises">
+    <ul class="wrap trust-list">
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Free, no catch</li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/></svg>Open source (MIT)</li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>No account, cloud or tracking</li>
+      <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>Every move can be undone</li>
+    </ul>
+  </section>
+
+  <!-- Tidy -->
+  <section class="section" id="tidy">
+    <div class="wrap">
+      <header class="section-head">
+        <p class="eyebrow">Tidy</p>
+        <h2>Downloads that sort themselves</h2>
+        <p>Images, documents, installers, videos, archives and more go into their own folders. You choose whether Inlet does it on its own or waits for you.</p>
+      </header>
+
+      <div class="modes">
+        <article class="mode">
+          <div class="mode-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/></svg></div>
+          <h3>Manual <span class="tag">Default</span></h3>
+          <p>See every file, where it will go and why, before anything moves. Change any destination, then click <strong>Tidy now</strong>.</p>
+        </article>
+        <article class="mode">
+          <div class="mode-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg></div>
+          <h3>Auto</h3>
+          <p>Each new download is sorted once it has <em>finished</em> downloading. Half-finished <code>.crdownload</code>, <code>.part</code> and <code>.download</code> files are never touched.</p>
+        </article>
+      </div>
+
+      <figure class="window window-wide">
+        <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+        <img src="assets/organize-1200.webp" srcset="assets/organize-1200.webp 1200w, assets/organize.webp 2360w" sizes="(min-width: 1100px) 1040px, 100vw" width="2360" height="1560" loading="lazy" decoding="async" alt="Inlet's Organize screen: a preview list of files, each with the folder it will move to and the reason it matched.">
+      </figure>
+
+      <ul class="points">
+        <li><strong>A daily sweep</strong> at a time you choose.</li>
+        <li><strong>More than Downloads.</strong> Watch Desktop, where screenshots land, or any folder, each with its own mode.</li>
+        <li><strong>Folders are left alone.</strong> Project folders stay where they are unless you say otherwise.</li>
+        <li><strong>Lives in the menu bar,</strong> so Auto mode keeps working with the window closed.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Find -->
+  <section class="section section-tint" id="find">
+    <div class="wrap">
+      <header class="section-head">
+        <p class="eyebrow">Find</p>
+        <h2>Find a file by describing it</h2>
+        <p>Press <kbd>⌘</kbd><kbd>F</kbd> and type what you remember, in your own words. Inlet shows what it understood, and says why each file matched.</p>
+      </header>
+
+      <div class="find-demo" aria-label="Example searches">
+        <div class="find-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <span class="find-text" data-find-text>pdfs from github last week</span><span class="caret" aria-hidden="true"></span>
+        </div>
+        <div class="chips" data-find-chips>
+          <span class="chip">.pdf</span><span class="chip">from github.com</span><span class="chip">last week</span>
+        </div>
+        <ul class="results" data-find-results>
+          <li><span class="ficon ficon-doc"></span><span class="fname">api-reference.pdf</span><span class="why">PDF · from github.com · 3 days ago</span></li>
+          <li><span class="ficon ficon-doc"></span><span class="fname">release-notes.pdf</span><span class="why">PDF · from github.com · 5 days ago</span></li>
+        </ul>
+        <p class="find-note">An example of how searches look. Your results come from your own files.</p>
+      </div>
+
+      <div class="table-wrap">
+        <table class="examples">
+          <thead><tr><th scope="col">You type</th><th scope="col">Inlet looks for</th></tr></thead>
+          <tbody>
+            <tr><td>pdfs from github last week</td><td>PDFs · downloaded from github.com · during last week</td></tr>
+            <tr><td>big videos I haven’t opened in a month</td><td>videos · over 50 MB · not opened in 30 days</td></tr>
+            <tr><td>the contract I signed in July</td><td>“contract” or “signed” in the name or text · from July</td></tr>
+            <tr><td>airdropped photos</td><td>images · received with AirDrop</td></tr>
+            <tr><td>what did Inlet move today</td><td>today’s moves, from Inlet’s own history</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <ul class="points">
+        <li><strong>Reads inside files,</strong> including the text of PDFs, Word, Pages, Excel and text files.</li>
+        <li><strong>Grab what you find:</strong> gather results into a folder (undoable), preview with Space, drag them out, or show them in Finder.</li>
+        <li><strong>No AI service, nothing sent anywhere.</strong> It uses macOS Spotlight and Inlet’s own records.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Source -->
+  <section class="section" id="source">
+    <div class="wrap split">
+      <div>
+        <p class="eyebrow">Remembers</p>
+        <h2>Knows where every file came from</h2>
+        <p>macOS forgets which website a file came from once you unzip it, AirDrop it or save it from another app. Inlet notes the website and app of every download the moment it arrives, and unzipped files keep their archive’s source.</p>
+        <p>Hover over a file to see it, search by it (<q>stuff from figma</q>), or sort by it with a rule. You can see, export or clear this history at any time. It stays on your Mac.</p>
+      </div>
+      <div class="source-card" aria-hidden="true">
+        <div class="src-row"><span class="ficon ficon-archive"></span><div><b>brand-assets.zip</b><small>from figma.com · Safari</small></div></div>
+        <div class="src-arrow">unzipped</div>
+        <div class="src-row"><span class="ficon ficon-image"></span><div><b>logo-dark.svg</b><small>from figma.com · kept from the archive</small></div></div>
+        <div class="src-row"><span class="ficon ficon-image"></span><div><b>hero@2x.png</b><small>from figma.com · kept from the archive</small></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section section-tint" id="features">
+    <div class="wrap">
+      <header class="section-head">
+        <p class="eyebrow">And more</p>
+        <h2>Small app, lots of care</h2>
+      </header>
+      <div class="grid">
+        <article class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></div>
+          <h3>Rules, in plain terms</h3>
+          <p>Match by name, extension, size, age, website, Finder kind or the text inside a file. Rules can rename as they move: <code>scan0001.pdf</code> becomes <code>Scans/Scan 2026-09-25.pdf</code>.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg></div>
+          <h3>Learns from you</h3>
+          <p>Move a file somewhere else, in Inlet or in Finder, and it suggests a rule for next time. Drag a file back into Downloads and Inlet leaves it alone.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></div>
+          <h3>Cleanup</h3>
+          <p>Find files you haven’t opened in months, and duplicates. Archive or remove them. Removed files wait 30 days before they go to the Trash.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+          <h3>Your folders, your way</h3>
+          <p>Send each category anywhere, add date subfolders like <code>Images/2026-09</code>, and turn off what you don’t need.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div>
+          <h3>Rules on every Mac</h3>
+          <p>Export and import your rules, or keep them in sync through a folder like iCloud Drive.</p>
+        </article>
+        <article class="card">
+          <div class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8M16 7l3 3M19 4l2 2"/></svg></div>
+          <h3>Careful with secrets</h3>
+          <p>Keys, certificates and credential files get their own <b>Keys &amp; Certs</b> folder instead of being mixed in with documents.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Safety -->
+  <section class="section" id="safety">
+    <div class="wrap split split-reverse">
+      <figure class="window">
+        <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+        <img src="assets/activity-1200.webp" srcset="assets/activity-1200.webp 1200w, assets/activity.webp 2360w" sizes="(min-width: 1100px) 560px, 100vw" width="2360" height="1560" loading="lazy" decoding="async" alt="Inlet's Activity screen: a timeline of sorted batches, each with an Undo button.">
+      </figure>
+      <div>
+        <p class="eyebrow">Safe by design</p>
+        <h2>Built so it can’t lose your files</h2>
+        <ul class="checks">
+          <li><b>Nothing is deleted or overwritten.</b> Inlet only moves files. If a name is taken, the new file becomes <code>report (1).pdf</code>.</li>
+          <li><b>Undo anything.</b> A whole batch or a single file, from the Activity page, the menu bar, or <kbd>⌘</kbd><kbd>Z</kbd>.</li>
+          <li><b>Never grabs a file mid-download.</b> It waits until the file has stopped changing.</li>
+          <li><b>Removed files wait 30 days</b> in a holding folder, so you can change your mind.</li>
+          <li><b>Private.</b> No account, no cloud, no analytics. Inlet doesn’t connect to the internet.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section class="section section-tint" id="install">
+    <div class="wrap">
+      <header class="section-head">
+        <p class="eyebrow">Install</p>
+        <h2>Up and running in a minute</h2>
+        <p>One installer works on every Mac, Apple silicon and Intel alike. Needs macOS 13 Ventura or later.</p>
+      </header>
+      <ol class="steps">
+        <li>
+          <span class="step-n">1</span>
+          <h3>Download</h3>
+          <p>Get <b data-pkg-name>Inlet.pkg</b> from the button below, or from <a href="https://github.com/Tech-Reign-Era-Services/inlet/releases/latest">GitHub Releases</a>.</p>
+        </li>
+        <li>
+          <span class="step-n">2</span>
+          <h3>Open it the first time</h3>
+          <p><b>Right-click</b> the <code>.pkg</code>, choose <b>Open</b>, then <b>Open</b> again. See the note below for why.</p>
+        </li>
+        <li>
+          <span class="step-n">3</span>
+          <h3>Install</h3>
+          <p>Click <b>Continue</b>, <b>Agree</b> and <b>Install</b>. Inlet opens by itself and appears in your menu bar. Click <b>Allow</b> when it asks to read Downloads.</p>
+        </li>
+      </ol>
+
+      <aside class="note" id="gatekeeper">
+        <div class="note-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v4M12 16h.01"/></svg></div>
+        <div>
+          <h3>Why macOS asks “Apple could not verify…”</h3>
+          <p>Apple charges developers a yearly fee to sign apps. Inlet is free, so it isn’t signed, and macOS asks you to confirm once, for the installer only. The full source code is public on GitHub, so anyone can check what Inlet does.</p>
+          <p><b>No Open button?</b> On newer macOS, try to open the installer once and close the warning. Then go to <b>System Settings → Privacy &amp; Security</b>, scroll down, and click <b>Open Anyway</b> next to the message about Inlet.</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section" id="faq">
+    <div class="wrap narrow">
+      <header class="section-head">
+        <p class="eyebrow">FAQ</p>
+        <h2>Questions</h2>
+      </header>
+      <div class="faq">
+        <details>
+          <summary>Is Inlet really free?</summary>
+          <p>Yes. No trial, no subscription, no ads, no account. It’s open source under the MIT license, made by Tech Reign Era Services.</p>
+        </details>
+        <details>
+          <summary>Will it mess up my files?</summary>
+          <p>Inlet never deletes or overwrites anything. It only moves files, and every move is logged so you can undo it. Manual mode, the default, shows you a preview before anything moves.</p>
+        </details>
+        <details>
+          <summary>Does Inlet send my files or data anywhere?</summary>
+          <p>No. Inlet doesn’t connect to the internet. Find uses macOS Spotlight and Inlet’s own records, not an AI service. Settings and history stay in <code>~/Library/Application Support/Inlet</code>.</p>
+        </details>
+        <details>
+          <summary>Does it work on my Mac?</summary>
+          <p>Inlet runs on macOS 13 Ventura or later, on both Apple silicon (M1 and newer) and Intel Macs. There’s one installer for both.</p>
+        </details>
+        <details>
+          <summary>How is it different from Hazel?</summary>
+          <p>Hazel is a powerful paid tool for automating any folder. Inlet is free and focused on one job: keeping Downloads (and folders like Desktop) tidy, with a preview before anything moves, undo for everything, and a way to find files by describing them.</p>
+        </details>
+        <details>
+          <summary>How do I update?</summary>
+          <p>Download the new installer and run it. It asks you to quit Inlet first, and keeps your settings, rules and history. To hear about new versions, open the <a href="https://github.com/Tech-Reign-Era-Services/inlet">GitHub page</a>, click <b>Watch</b>, and choose <b>Releases</b>.</p>
+        </details>
+        <details>
+          <summary>How do I uninstall it?</summary>
+          <p>Quit Inlet from its menu bar icon and move it from Applications to the Trash. To remove its settings and history too, delete <code>~/Library/Application Support/Inlet</code>. Your sorted files stay where they are.</p>
+        </details>
+        <details>
+          <summary>I found a bug or have an idea.</summary>
+          <p>Please <a href="https://github.com/Tech-Reign-Era-Services/inlet/issues/new/choose">open an issue</a> or start a <a href="https://github.com/Tech-Reign-Era-Services/inlet/discussions">discussion</a>. Pull requests are welcome too.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="final">
+    <div class="wrap final-inner">
+      <img src="assets/icon-256.png" alt="" width="88" height="88" loading="lazy">
+      <h2>Give your Downloads folder a break</h2>
+      <p>Free, open source, and yours to keep.</p>
+      <div class="cta-row cta-center">
+        <a class="btn btn-lg btn-primary" href="https://github.com/Tech-Reign-Era-Services/inlet/releases/latest" data-download>Download for Mac</a>
+        <a class="btn btn-lg btn-ghost" href="https://github.com/Tech-Reign-Era-Services/inlet">Star on GitHub</a>
+      </div>
+      <p class="fineprint" data-release-meta>Free · One installer for Apple silicon and Intel · macOS 13 Ventura or later</p>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <p>© 2026 Tech Reign Era Services · <a href="https://github.com/Tech-Reign-Era-Services/inlet/blob/main/LICENSE">MIT License</a></p>
+    <nav aria-label="Project links">
+      <a href="https://github.com/Tech-Reign-Era-Services/inlet">Source</a>
+      <a href="https://github.com/Tech-Reign-Era-Services/inlet/releases">Releases</a>
+      <a href="https://github.com/Tech-Reign-Era-Services/inlet/blob/main/CONTRIBUTING.md">Contribute</a>
+      <a href="https://github.com/Tech-Reign-Era-Services/inlet/blob/main/SECURITY.md">Security</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="main.js" defer></script>
+</body>
+</html>
