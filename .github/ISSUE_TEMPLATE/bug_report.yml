@@ -54,7 +54,8 @@ body:
     attributes:
       label: How did you install Inlet?
       options:
-        - DMG from GitHub Releases
+        - Installer (.pkg) from GitHub Releases
+        - DMG from GitHub Releases (1.5.1 or older)
         - Built it myself from source
     validations:
       required: true

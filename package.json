@@ -29,10 +29,9 @@
       "icon": "build/icon.png",
       "target": [
         {
-          "target": "dmg",
+          "target": "pkg",
           "arch": [
-            "arm64",
-            "x64"
+            "universal"
           ]
         }
       ],
@@ -40,8 +39,7 @@
         "LSUIElement": false,
         "NSDownloadsFolderUsageDescription": "Inlet sorts the files in your Downloads folder into category folders."
       },
-      "identity": null,
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "identity": null
     },
     "files": [
       "src/**/*",
@@ -49,8 +47,28 @@
       "build/icon.png",
       "package.json"
     ],
-    "dmg": {
-      "title": "Inlet ${version}"
+    "pkg": {
+      "artifactName": "${productName}-${version}.${ext}",
+      "welcome": "build/pkg/welcome.html",
+      "license": "build/pkg/license.txt",
+      "conclusion": "build/pkg/conclusion.html",
+      "background": {
+        "file": "build/pkg/background.png",
+        "alignment": "bottomleft",
+        "scaling": "none"
+      },
+      "scripts": "pkg-scripts",
+      "installLocation": "/Applications",
+      "isRelocatable": false,
+      "isVersionChecked": false,
+      "overwriteAction": "upgrade",
+      "mustClose": [
+        "com.techreignera.inlet"
+      ],
+      "allowAnywhere": false,
+      "allowCurrentUserHome": false,
+      "allowRootDirectory": true,
+      "identity": null
     }
   },
   "devDependencies": {

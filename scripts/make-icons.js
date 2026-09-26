@@ -80,11 +80,11 @@ function trayIcon(size) {
   return png(size, render(size, (x, y) => [0, 0, 0, glyphCoverage(x * scale, y * scale, 1.7) * 255]));
 }
 
-function appIcon(size = 1024) {
+function appIconPixels(size) {
   const inset = size * 0.1; const box = size - inset * 2; const radius = box * 0.225;
   const top = [110, 168, 255]; const bottom = [72, 84, 232];
   const gScale = 22 / (box * 0.62); const gOff = inset + box * 0.19;
-  return png(size, render(size, (x, y) => {
+  return render(size, (x, y) => {
     if (!roundedRectInside(x, y, inset, inset, box, radius)) {
       // soft drop shadow below the tile
       const d = roundedRectInside(x, y - size * 0.012, inset, inset, box, radius) ? 1 : 0;
@@ -94,11 +94,27 @@ function appIcon(size = 1024) {
     const base = top.map((c, i) => c + (bottom[i] - c) * t);
     const inGlyph = glyphCoverage((x - gOff) * gScale, (y - gOff - box * 0.02) * gScale, 1.9);
     return inGlyph ? [255, 255, 255, 255] : [...base, 255];
-  }, 2));
+  }, 2);
+}
+
+const appIcon = (size = 1024) => png(size, appIconPixels(size));
+
+/**
+ * Sidebar image for the .pkg installer: the app icon in the bottom-left corner of a transparent
+ * square, so it sits under the installer's step list in both light and dark mode.
+ */
+function installerBackground(size = 200, iconSize = 128) {
+  const canvas = Buffer.alloc(size * size * 4);
+  const iconPx = appIconPixels(iconSize);
+  const ox = 30; const oy = size - iconSize - 26;
+  for (let y = 0; y < iconSize; y++) iconPx.copy(canvas, ((oy + y) * size + ox) * 4, y * iconSize * 4, (y + 1) * iconSize * 4);
+  return png(size, canvas);
 }
 
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'trayTemplate.png'), trayIcon(22));
 fs.writeFileSync(path.join(OUT, 'trayTemplate@2x.png'), trayIcon(44));
 fs.writeFileSync(path.join(OUT, 'icon.png'), appIcon(1024));
+fs.mkdirSync(path.join(OUT, 'pkg'), { recursive: true });
+fs.writeFileSync(path.join(OUT, 'pkg', 'background.png'), installerBackground());
 console.log('Icons written to', OUT);

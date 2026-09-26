@@ -11,6 +11,7 @@ module.exports = [
       'Every result says why it matched, and where the file came from.',
       'Select results to gather them into a folder (undoable), copy their paths, or show them in Finder. Space previews a file, and you can drag files out.',
       'Code projects are left out unless you ask, so searches stay fast.',
+      'One installer for every Mac: Apple silicon and Intel. It walks you through the install and opens Inlet when it’s done.',
     ],
   },
   {

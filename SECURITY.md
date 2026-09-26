@@ -28,4 +28,4 @@ Only the latest release gets fixes. Please update before reporting.
 
 ## About unsigned builds
 
-Release DMGs aren't signed with an Apple Developer certificate yet, which is why macOS asks you to confirm the first time you open Inlet. Only download Inlet from this repository's [Releases](https://github.com/Tech-Reign-Era-Services/inlet/releases) page, or build it yourself from source.
+The release installer isn't signed with an Apple Developer certificate yet, which is why macOS asks you to confirm the first time you open it. Only download Inlet from this repository's [Releases](https://github.com/Tech-Reign-Era-Services/inlet/releases) page, or build it yourself from source.
