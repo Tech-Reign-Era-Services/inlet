@@ -151,4 +151,13 @@ function layout(display, notch, count) {
   };
 }
 
-module.exports = { Shelf, parseNotch, layout, NOTCH_SCRIPT, MAX_ITEMS, EAR, SHOULDER };
+const REACH_X = 80; // while dragging, how far beside the closed island the pointer opens the Shelf
+const REACH_Y = 24; // …and how far below the menu bar
+
+/** While something is being dragged: is the pointer close enough to the closed Shelf to open it? */
+function nearShelf(point, L) {
+  const c = L.closed;
+  return point.x >= c.x - REACH_X && point.x <= c.x + c.width + REACH_X && point.y >= c.y && point.y <= c.y + L.bar + REACH_Y;
+}
+
+module.exports = { Shelf, parseNotch, layout, nearShelf, NOTCH_SCRIPT, MAX_ITEMS, EAR, SHOULDER };

@@ -4,11 +4,13 @@
 // like the Dynamic Island when you hover over it, drag something onto it, or press the shortcut.
 const path = require('path');
 const { BrowserWindow, screen } = require('electron');
-const { layout, parseNotch, NOTCH_SCRIPT } = require('./shelf');
+const { layout, parseNotch, nearShelf, NOTCH_SCRIPT } = require('./shelf');
 const { jxa } = require('./pasteboard');
+const { DragWatch } = require('./dragWatch');
 
 const COLLAPSE_MS = 320; // a little longer than the island's 0.3s close in shelf.css
 const WATCH_MS = 250; // while peeking, how often to check the pointer is still near the Shelf
+const DRAG_MS = 50; // while something is being dragged, how often to check whether it's heading for the Shelf
 
 class ShelfWindow {
   constructor() {
@@ -20,7 +22,17 @@ class ShelfWindow {
     this.notch = null;
     this.shrinkTimer = null;
     this.watchTimer = null;
+    this.dragTimer = null;
     this.onDisplays = () => this.measure();
+    // A drag anywhere on the Mac: open as the pointer nears the notch, since the notch itself is too small to aim for.
+    this.drags = new DragWatch();
+    this.drags.on('drag', () => {
+      clearInterval(this.dragTimer);
+      this.dragTimer = setInterval(() => {
+        if (this.alive && this.state === 'closed' && nearShelf(screen.getCursorScreenPoint(), this.layout())) this.setState('peek');
+      }, DRAG_MS);
+    });
+    this.drags.on('end', () => { clearInterval(this.dragTimer); this.dragTimer = null; });
   }
 
   get alive() { return !!this.win && !this.win.isDestroyed(); }
@@ -59,7 +71,9 @@ class ShelfWindow {
         backgroundThrottling: false,
       },
     });
-    this.win.setAlwaysOnTop(true, 'screen-saver');
+    // Above the menu bar (level 24) but below the image of whatever is being dragged (level 500):
+    // at 'screen-saver' (1000) a file dragged onto the Shelf would disappear behind it.
+    this.win.setAlwaysOnTop(true, 'pop-up-menu');
     // Without skipTransformProcessType, macOS would turn Inlet into a menu-bar-only app and hide its Dock icon.
     this.win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     this.win.on('blur', () => { if (this.state === 'open') this.setState('closed'); });
@@ -70,6 +84,7 @@ class ShelfWindow {
     screen.on('display-metrics-changed', this.onDisplays);
     screen.on('display-added', this.onDisplays);
     screen.on('display-removed', this.onDisplays);
+    this.drags.start();
   }
 
   disable() {
@@ -79,6 +94,7 @@ class ShelfWindow {
     screen.removeListener('display-removed', this.onDisplays);
     clearTimeout(this.shrinkTimer);
     this.watch(false);
+    this.drags.stop();
     if (this.alive) this.win.destroy();
     this.win = null;
     this.state = 'closed';
