@@ -10,6 +10,7 @@ const { DragWatch } = require('./dragWatch');
 
 const COLLAPSE_MS = 320; // a little longer than the island's 0.3s close in shelf.css
 const WATCH_MS = 250; // while peeking, how often to check the pointer is still near the Shelf
+const KEEP_KEYS_MS = 700; // how long Quick Look may try to take the keyboard after opening
 const DRAG_MS = 50; // while something is being dragged, how often to check whether it's heading for the Shelf
 
 class ShelfWindow {
@@ -23,6 +24,7 @@ class ShelfWindow {
     this.shrinkTimer = null;
     this.watchTimer = null;
     this.dragTimer = null;
+    this.keysTimer = null;
     this.onDisplays = () => this.measure();
     // A drag anywhere on the Mac: open as the pointer nears the notch, since the notch itself is too small to aim for.
     this.drags = new DragWatch();
@@ -94,6 +96,7 @@ class ShelfWindow {
     screen.removeListener('display-removed', this.onDisplays);
     clearTimeout(this.shrinkTimer);
     this.watch(false);
+    clearInterval(this.keysTimer);
     this.drags.stop();
     if (this.alive) this.win.destroy();
     this.win = null;
@@ -151,6 +154,21 @@ class ShelfWindow {
     this.state = next;
     this.place();
     if (next === 'open' && focus) this.win.focus();
+  }
+
+  /**
+   * Quick Look takes the keyboard while it opens (when Inlet is the active app, up to twice during its animation),
+   * so the next Space would close it behind the page's back and the one after would seem to do nothing. Keep
+   * taking the keys back for a moment, as Finder keeps them, so Space, the arrows and Esc stay with the Shelf.
+   * (Electron sends no blur when Quick Look takes them, so this has to look.)
+   */
+  keepKeys() {
+    clearInterval(this.keysTimer);
+    const until = Date.now() + KEEP_KEYS_MS;
+    this.keysTimer = setInterval(() => {
+      if (!this.alive || Date.now() > until) { clearInterval(this.keysTimer); this.keysTimer = null; return; }
+      if (!this.win.isFocused()) this.win.focus();
+    }, 40);
   }
 
   /** Take the keyboard (after a click on the island), so Space, arrows and ⌘C reach the Shelf. */

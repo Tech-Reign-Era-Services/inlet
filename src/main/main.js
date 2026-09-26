@@ -579,6 +579,7 @@ function applyShelf() {
 }
 
 /** A text or link item as a .txt file, so Quick Look can show it. Kept in the temp folder, removed at quit. */
+const QUICK_LOOK_CLOSE_MS = 300;
 const SHELF_TEXT_DIR = path.join(app.getPath('temp'), 'Inlet Shelf');
 async function shelfTextFile(it) {
   const name = `${it.name.replace(/[/:\\]/g, '-').replace(/^\.+/, '').slice(0, 60).trim() || 'Text'}.txt`;
@@ -1062,16 +1063,26 @@ function registerIpc() {
   }));
   ipcMain.handle('shelf:reveal', fromShelf((id) => { const [f] = shelfFiles([id]); if (f) shell.showItemInFolder(f.path); }));
   // Quick Look, as Space does in Finder. Text and links are shown through a temporary text file.
-  ipcMain.handle('shelf:preview', fromShelf(async (id) => {
+  let previewTurn = 0; // the latest preview asked for: quick ← → presses end on the last one
+  ipcMain.handle('shelf:preview', fromShelf(async (id, switching) => {
+    const turn = ++previewTurn;
     const [it] = shelf.get([id]);
     if (!it || !shelfWin.alive) return false;
     const p = it.kind === 'file' ? (fs.existsSync(it.path) ? it.path : null) : await shelfTextFile(it);
     if (!p) return false;
+    if (switching) {
+      // An open Quick Look doesn't reload when given a new file (it keeps showing the old one), so close it,
+      // and wait out its closing animation: asked to open again during it, it stays closed.
+      shelfWin.win.closeFilePreview();
+      await new Promise((r) => setTimeout(r, QUICK_LOOK_CLOSE_MS));
+      if (turn !== previewTurn || !shelfWin.alive) return false;
+    }
     shelfWin.focus(); // Quick Look only appears for the focused window (a no-op when the Shelf already has the keys)
     shelfWin.win.previewFile(p, it.name); // the name, not the whole path, in Quick Look's title bar
+    shelfWin.keepKeys();
     return true;
   }));
-  ipcMain.handle('shelf:closePreview', fromShelf(() => { if (shelfWin.alive) shelfWin.win.closeFilePreview(); }));
+  ipcMain.handle('shelf:closePreview', fromShelf(() => { previewTurn++; if (shelfWin.alive) shelfWin.win.closeFilePreview(); }));
   ipcMain.handle('shelf:focus', fromShelf(() => shelfWin.focus()));
   ipcMain.handle('shelf:icon', fromShelf((id) => { const [f] = shelf.get([id]); return f && f.kind === 'file' ? fileIcon(f.path, 96, true) : null; }));
   ipcMain.on('shelf:setState', fromShelf((state) => { if (['closed', 'peek', 'open'].includes(state)) shelfWin.setState(state); }));

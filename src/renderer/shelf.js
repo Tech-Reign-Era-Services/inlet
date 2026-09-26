@@ -196,6 +196,7 @@ function select(it, e) {
     S.anchor = index;
   }
   renderItems();
+  if (S.previewing && S.previewing !== it.id && S.selected.has(it.id)) preview(it.id); // the preview follows the click, as in Finder
 }
 
 /** Drag the tile (or the selection it belongs to) out to Finder, Mail, a browser upload box… */
@@ -382,11 +383,16 @@ function updateFades() {
 
 // ---------- Quick Look (Space, as in Finder) ----------
 
+let previewTurn = 0;
 async function preview(id) {
-  S.previewing = (await api.preview(id)) ? id : null;
+  const turn = ++previewTurn;
+  const shown = await api.preview(id, !!S.previewing); // switching: Quick Look must close and reopen to show it
+  if (turn !== previewTurn) return; // a later ← → overtook this one
+  S.previewing = shown ? id : null;
   renderHint();
 }
 function closePreview() {
+  previewTurn++;
   api.closePreview();
   S.previewing = null;
   renderHint();
@@ -399,7 +405,8 @@ function togglePreview() {
   return preview(S.items.find((x) => S.selected.has(x.id)).id);
 }
 // Someone clicked Quick Look or another app: Space opens a fresh preview next time instead of "closing" one.
-window.addEventListener('blur', () => { if (S.previewing) { S.previewing = null; renderHint(); } });
+// Only once the keys are really gone: opening Quick Look blurs the Shelf for a moment too, then it takes them back.
+window.addEventListener('blur', () => later('lostKeys', 300, () => { if (S.previewing && !document.hasFocus()) { S.previewing = null; renderHint(); } }));
 
 const HANDLED = new Set([' ', 'Escape', 'Enter', 'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight']);
 document.addEventListener('keydown', (e) => {

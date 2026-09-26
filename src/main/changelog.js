@@ -4,10 +4,11 @@
 module.exports = [
   {
     version: '1.9.1',
-    title: 'Dropping on the Shelf, fixed',
+    title: 'Shelf fixes',
     items: [
       'Drag a file towards the notch and the Shelf now opens before you reach it, so there’s room to drop. Before, you had to land exactly on the notch.',
       'Whatever you’re dragging now stays in front of the Shelf instead of disappearing behind it.',
+      'Space previews and closes reliably every time. ← → and clicking another item show that item, not the one you started with.',
     ],
   },
   {
