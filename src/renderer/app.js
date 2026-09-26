@@ -919,7 +919,12 @@ function renderFind() {
     oninput: (e) => {
       F.text = e.target.value;
       clearTimeout(findTimer);
-      if (!F.text.trim()) { Object.assign(F, { ran: false, results: [], query: null, notes: [] }); renderFindResults(); return; }
+      if (!F.text.trim()) {
+        findSeq++; // a search still running for the old text must not fill the cleared page
+        Object.assign(F, { busy: false, ran: false, results: [], query: null, notes: [] });
+        renderFindResults();
+        return;
+      }
       findTimer = setTimeout(() => runFind({ text: F.text }), 450);
     },
     onkeydown: (e) => {

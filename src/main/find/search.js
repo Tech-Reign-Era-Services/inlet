@@ -24,6 +24,17 @@ const FOLDER_CAP = 20000;
 const DAY = 86400000;
 const SKIP = /\/(?:\.[^/]+|node_modules|Library|\.git)(?:\/|$)/; // hidden folders, dependencies, app data
 
+/**
+ * Is `p` inside a hidden folder, dependencies or app data *below* the search root that contains it? Only the
+ * part under the root is tested: a watched folder that itself lives in ~/Library or a hidden folder (iCloud
+ * Drive is ~/Library/Mobile Documents/…) must still return its files.
+ */
+function skipped(p, roots) {
+  const r = path.resolve(p);
+  const root = roots.filter((d) => r === d || folders.isInside(r, d)).sort((a, b) => b.length - a.length)[0];
+  return SKIP.test(`/${root ? path.relative(root, r) : r}`);
+}
+
 const esc = (s) => String(s).replace(/[\\"*]/g, (c) => `\\${c}`);
 const iso = (ms) => `$time.iso(${new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')})`;
 
@@ -320,14 +331,14 @@ async function checkLoose(root, q, ctx, found, add) {
 }
 
 /** Files in a folder Spotlight doesn't index (depth-limited, skipping hidden folders and dependencies). */
-async function walkFiles(dir, depth = 0, out = []) {
+async function walkFiles(dir, depth = 0, out = [], root = dir) {
   if (depth > 4 || out.length > 5000) return out;
   let entries = [];
   try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch { return out; }
   for (const e of entries) {
     const p = path.join(dir, e.name);
-    if (SKIP.test(p)) continue;
-    if (e.isDirectory()) await walkFiles(p, depth + 1, out);
+    if (skipped(p, [root])) continue;
+    if (e.isDirectory()) await walkFiles(p, depth + 1, out, root);
     else if (e.isFile()) out.push({ path: p });
   }
   return out;
@@ -400,7 +411,7 @@ async function search(query, ctxIn) {
   const found = new Map(); // path → { f, reasons, score }
 
   const add = (f, reasons, bonus = 0) => {
-    if (!f || !reasons || SKIP.test(f.path) || found.has(f.path)) return;
+    if (!f || !reasons || skipped(f.path, dirs) || found.has(f.path)) return;
     found.set(f.path, { f, reasons, score: reasons.length + bonus + (f.nameHits || 0) * 2 });
   };
 
@@ -445,7 +456,7 @@ async function search(query, ctxIn) {
         await checkLoose(r, q, ctx, found, add);
       }
     }
-    const paths = [...new Set(spotPaths)].filter((p) => !SKIP.test(p)).slice(0, 2000);
+    const paths = [...new Set(spotPaths)].filter((p) => !skipped(p, dirs)).slice(0, 2000);
     await prefetch(paths, q, ctx);
     for (const p of paths) {
       const f = await facts(p, ctx.ledger);

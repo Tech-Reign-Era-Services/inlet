@@ -8,6 +8,8 @@
 const DAY = 86400000;
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const MONTH_SHORT = MONTHS.map((m) => m.slice(0, 3));
+// Whole month names and their usual abbreviations only: "decks", "marketing" and "separate" aren't months.
+const MONTH_RE = `(?:${[...MONTHS, 'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sept', 'sep', 'oct', 'nov', 'dec'].join('|')})`;
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const NUMBER_WORDS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twelve: 12, couple: 2, few: 3 };
 
@@ -39,7 +41,9 @@ const APPS = {
 const ROLES = new Set(['manager', 'boss', 'friend', 'friends', 'colleague', 'colleagues', 'coworker', 'coworkers', 'client', 'clients', 'customer', 'mom', 'mum', 'dad',
   'mother', 'father', 'brother', 'sister', 'son', 'daughter', 'wife', 'husband', 'partner', 'designer', 'developer', 'teacher', 'professor', 'tutor', 'accountant',
   'lawyer', 'doctor', 'landlord', 'recruiter', 'hr', 'team', 'someone', 'somebody', 'he', 'she', 'they', 'him', 'her', 'agent', 'bank', 'school', 'office']);
-const SENT_VERBS = 'sent|shared|gave|emailed|mailed|forwarded|uploaded|texted|messaged';
+// Extensions that are also everyday words: only a file type when written like one (see parse).
+const AMBIGUOUS_EXTS = new Set(['doc', 'key', 'app', 'md', 'c', 'h', 'ai', 'db', 'pages', 'numbers', 'sketch', 'go', 'fig', 'dump', 'swift', 'java', 'raw', 'rs', 'rb', 'in']);
+const SENT_VERBS ='sent|shared|gave|emailed|mailed|forwarded|uploaded|texted|messaged';
 
 const STOPWORDS = new Set(['i', 'me', 'my', 'mine', 'the', 'a', 'an', 'that', 'which', 'those', 'these', 'this', 'file', 'files', 'all', 'any', 'show',
   'find', 'get', 'give', 'where', 'is', 'are', 'was', 'were', 'did', 'do', 'from', 'with', 'of', 'for', 'to', 'in', 'on', 'at', 'and', 'or', 'some',
@@ -68,23 +72,29 @@ function parseTime(state, now) {
   const today = startOfDay(now);
   const range = (from, to, label) => ({ from, to, label });
   let m;
+  const out = {};
+
+  // "haven't opened in a month", "not opened since march", "never opened". Read first, so "opened" here isn't
+  // taken as which date is meant, and keep going: "pdfs from last week I never opened" has a date as well.
+  const NOT = "(?:haven'?t|have not|hasn'?t|has not|didn'?t|did not|not)\\s+(?:been\\s+|ever\\s+)?";
+  const OPENED = '(?:opened|used|looked at|touched)';
+  if (take(state, new RegExp(`\\b(?:never|not ever)\\s+(?:been\\s+)?${OPENED}\\b`))) {
+    Object.assign(out, { notOpenedDays: 36500, notOpenedLabel: 'never opened' });
+  } else if ((m = take(state, new RegExp(`\\b${NOT}${OPENED}\\s+(?:since|after)\\s+(${MONTH_RE}|\\d{4})\\b`)))) {
+    const [from] = monthOrYear(m[1], now);
+    Object.assign(out, { notOpenedDays: Math.max(1, Math.ceil((now.getTime() - from) / DAY)), notOpenedLabel: `not opened since ${pretty(m[1])}` });
+  } else if ((m = take(state, new RegExp(`\\b${NOT}${OPENED}?\\s*(?:in|for|since)\\s+(?:the\\s+)?(?:(?:last|past)\\s+)?(\\w+)?\\s*(day|week|month|year)s?\\b`)))) {
+    const n = num(m[1] || '1') || 1;
+    const days = n * { day: 1, week: 7, month: 30, year: 365 }[m[2]];
+    Object.assign(out, { notOpenedDays: days, notOpenedLabel: `not opened in ${n === 1 ? `a ${m[2]}` : `${n} ${m[2]}s`}` });
+  } else if (take(state, new RegExp(`\\b${NOT}${OPENED}\\b`))) {
+    Object.assign(out, { notOpenedDays: 36500, notOpenedLabel: 'never opened' }); // "files I haven't opened": no period given
+  }
 
   // Which date the person means. Default: when it arrived (downloaded).
   let field = 'downloaded';
   if (take(state, /\b(opened|used|looked at|viewed|read)\b/)) field = 'opened';
   else if (take(state, /\b(edited|modified|changed|updated|worked on)\b/)) field = 'modified';
-
-  // "haven't opened in a month", "not opened since march", "never opened"
-  if ((m = take(state, /\b(?:never|not ever)\s+(?:been\s+)?(?:opened|used|looked at)\b/))) return { notOpenedDays: 36500, notOpenedLabel: 'never opened' };
-  if ((m = take(state, /\b(?:haven'?t|have not|not|didn'?t|did not)\s+(?:been\s+)?(?:opened|used|looked at|touched)?\s*(?:in|for|since)\s+(?:the\s+)?(?:(?:last|past)\s+)?(\w+)?\s*(day|week|month|year)s?\b/))) {
-    const n = num(m[1] || '1') || 1;
-    const days = n * { day: 1, week: 7, month: 30, year: 365 }[m[2]];
-    return { notOpenedDays: days, notOpenedLabel: `not opened in ${n === 1 ? `a ${m[2]}` : `${n} ${m[2]}s`}` };
-  }
-  if (field === 'opened' && (m = take(state, /\b(?:haven'?t|have not|not|never)\b/))) {
-    // "files I haven't opened" with no period: treat as "never opened"
-    return { notOpenedDays: 36500, notOpenedLabel: 'never opened' };
-  }
 
   const fieldWord = { downloaded: 'downloaded', opened: 'opened', modified: 'changed' }[field];
   let t = null;
@@ -139,19 +149,30 @@ function parseTime(state, now) {
   } else if ((m = take(state, /\b(?:on |last )?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/))) {
     const back = ((now.getDay() - WEEKDAYS.indexOf(m[1]) + 7) % 7) || 7; // the most recent one before today
     t = range(today - back * DAY, today - back * DAY + DAY, `on ${m[1][0].toUpperCase()}${m[1].slice(1)}`);
-  } else if ((m = take(state, /\b(before|after|since)\s+(\d{4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*)\b/))) {
+  } else if ((m = take(state, new RegExp(`\\b(before|after|since)\\s+(\\d{4}|${MONTH_RE})\\b`)))) {
     const [from, to] = monthOrYear(m[2], now);
     if (m[1] === 'before') t = range(0, from, `before ${pretty(m[2])}`);
     else t = range(m[1] === 'after' ? to : from, now.getTime() + 1, `${m[1]} ${pretty(m[2])}`);
-  } else if ((m = take(state, /\b(?:in |during |from )?((?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*)(?:\s+(\d{4}))?\b/))) {
+  } else if ((m = takeMonth(state))) {
     const [from, to] = monthOrYear(m[1] + (m[2] ? ` ${m[2]}` : ''), now);
     if (from !== null) t = range(from, to, `in ${pretty(m[1])}${m[2] ? ` ${m[2]}` : ''}`);
   } else if ((m = take(state, /\b(?:in |during |from )(\d{4})\b/))) {
     const [from, to] = monthOrYear(m[1], now);
     t = range(from, to, `in ${m[1]}`);
   }
-  if (!t) return {};
-  return { time: { field, from: t.from, to: t.to, label: field === 'downloaded' ? t.label : `${fieldWord} ${t.label}` } };
+  if (t) out.time = { field, from: t.from, to: t.to, label: field === 'downloaded' ? t.label : `${fieldWord} ${t.label}` };
+  return out;
+}
+
+/** "in july", "march 2025", "sept": a month, with or without "in"/"during"/"from". "may" needs one of those, or a year. */
+function takeMonth(state) {
+  const re = new RegExp(`\\b(in |during |from )?(${MONTH_RE})(?:\\s+(\\d{4}))?\\b`, 'g');
+  for (const m of state.text.matchAll(re)) {
+    if (m[2] === 'may' && !m[1] && !m[3]) continue; // "files I may have saved"
+    state.text = `${state.text.slice(0, m.index)} ${state.text.slice(m.index + m[0].length)}`.replace(/\s+/g, ' ');
+    return [m[0], m[2], m[3]];
+  }
+  return null;
 }
 
 const pretty = (s) => (/^\d{4}$/.test(s) ? s : `${s[0].toUpperCase()}${s.slice(1)}`);
@@ -195,7 +216,8 @@ function parse(sentence, { categories = [], folders = [], now = new Date() } = {
 
   // What Inlet did: "what did inlet move", "files i removed", "sorted yesterday"
   if (take(state, /\b(?:inlet|tidy)\s+(?:moved|sorted|tidied|filed)\b|\bwhat did (?:inlet|tidy) (?:do|move|sort)\b|\b(?:moved|sorted|tidied) by (?:inlet|tidy)\b/)) q.inletAction = 'moved';
-  else if (take(state, /\b(?:i |inlet )?(?:removed|deleted|trashed|cleaned up)\b/)) q.inletAction = 'removed';
+  // Only as something someone did ("what did i remove", "files i deleted"), not a description ("background removed").
+  else if (take(state, /\bwhat did (?:i|inlet|tidy|you) (?:remove|delete|trash|clean up)\b|\b(?:i|inlet|tidy|you) (?:removed|deleted|trashed|cleaned up)\b|\b(?:removed|deleted|trashed) by (?:me|inlet|tidy)\b/)) q.inletAction = 'removed';
 
   // Where the files are: "on my desktop", "in documents"
   for (const f of folders) {
@@ -225,7 +247,10 @@ function parse(sentence, { categories = [], folders = [], now = new Date() } = {
 
   // People can't be identified from file metadata: "the designer shared", "from my manager".
   let person = false;
-  while ((m = take(state, new RegExp(`\\b(?:my|our|the|a|his|her|their)?\\s*([a-z]+)\\s+(?:${SENT_VERBS})\\b`)))) { if (!STOPWORDS.has(m[1]) || ROLES.has(m[1])) person = true; }
+  // Only a role word ("the designer shared") or someone's ("my cousin sent"): in "pdfs shared on slack" or
+  // "invoice emailed last week" the word before the verb is what the file is, so leave it for the rest of the parser.
+  const roles = [...ROLES].map(escapeRe).join('|');
+  while (take(state, new RegExp(`\\b(?:(?:my|our|his|her|their)\\s+[a-z]+|(?:the\\s+|a\\s+)?(?:${roles}))\\s+(?:${SENT_VERBS})\\b`))) person = true;
   while ((m = take(state, /\b(?:from|by)\s+(?:my|our|the|a)\s+([a-z]+)\b/))) {
     if (ROLES.has(m[1])) person = true; else state.text += ` from ${m[1]}`; // "from the hotel" may still be a website
   }
@@ -253,14 +278,18 @@ function parse(sentence, { categories = [], folders = [], now = new Date() } = {
     if (take(state, new RegExp(`\\b${escapeRe(c.name.toLowerCase())}\\b`)) && !q.kinds.some((k) => k.id === c.id)) q.kinds.push({ type: 'category', id: c.id, label: c.name.toLowerCase() });
   }
   const knownExts = new Set(categories.flatMap((c) => c.extensions));
-  for (const word of state.text.split(/\s+/)) {
+  const tokens = state.text.split(/\s+/);
+  tokens.forEach((word, i) => {
     const w = word.replace(/^\.|[,;!?]$/g, '');
     const ext = knownExts.has(w) ? w : (w.endsWith('s') && knownExts.has(w.slice(0, -1)) ? w.slice(0, -1) : null);
-    if (ext && !['doc', 'key', 'app', 'md', 'c', 'h', 'ai', 'db'].includes(ext) || (ext && word.startsWith('.'))) {
+    // Everyday words that are also extensions ("web pages", "phone numbers") count only when written like a
+    // file type: ".pages", or "pages files".
+    const written = word.startsWith('.') || /^files?$/.test(tokens[i + 1] || '');
+    if (ext && (!AMBIGUOUS_EXTS.has(ext) || written)) {
       if (!q.kinds.some((k) => k.ext === ext)) q.kinds.push({ type: 'ext', ext, label: `.${ext}` });
       take(state, new RegExp(`(^|\\s)${escapeRe(word)}(?=\\s|$)`));
     }
-  }
+  });
 
   // Whatever's left: words to find in names or text.
   // Plurals match singulars too: "slips" finds "Salary_Slip.pdf" (the search matches inside names).

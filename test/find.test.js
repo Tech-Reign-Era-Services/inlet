@@ -54,6 +54,58 @@ test('people it can’t identify get a note, and chips can be removed', () => {
   assert.deepEqual(fewer.chips.map((c) => c.label), ['.zip']);
 });
 
+test('ordinary words aren’t mistaken for months, people, removals or file types', () => {
+  const p = (s) => parse(s, { categories, folders, now });
+  // Words that merely start like a month
+  for (const s of ['slide decks from github', 'marketing plan pdf', 'files I may have saved', 'separate invoices']) assert.equal(p(s).time, undefined, s);
+  assert.deepEqual(p('marketing plan pdf').kinds.map((k) => k.label), ['.pdf']);
+  assert.ok(p('separate invoices').words.includes('invoice'));
+  // …while real months still work, "may" included when it's clearly a date
+  assert.equal(p('invoices in may').time.label, 'in May');
+  assert.equal(p('photos from sept 2025').time.label, 'in Sept 2025');
+  assert.equal(p('files before march').time.label, 'before March');
+
+  // "shared"/"emailed" after a thing, not a person: keep the thing, no "who sent it" note
+  const slack = p('pdfs shared on slack');
+  assert.deepEqual(slack.chips.map((c) => c.label), ['.pdf', 'with Slack']);
+  assert.deepEqual(slack.notes, []);
+  const emailed = p('invoice emailed last week');
+  assert.deepEqual(emailed.chips.map((c) => c.label), ['last week', '“invoice”']);
+  assert.deepEqual(emailed.notes, []);
+  assert.match(p('the deck the designer shared').notes[0] || '', /can’t tell who sent/);
+  assert.match(p('what my cousin sent').notes[0] || '', /can’t tell who sent/);
+
+  // "never opened" plus a date: both count, and nothing is left behind as a word
+  const lastWeek = p('pdfs from last week I never opened');
+  assert.deepEqual(lastWeek.chips.map((c) => c.label), ['.pdf', 'last week', 'never opened']);
+  const since = p('haven’t opened since march');
+  assert.equal(since.notOpenedLabel, 'not opened since March');
+  assert.equal(since.notOpenedDays, Math.ceil((now - new Date(2026, 2, 1)) / 86400000));
+  assert.deepEqual(since.words, []);
+
+  // "removed" describing a file isn't a question about Inlet's history
+  assert.equal(p('photos with background removed').inletAction, null);
+  assert.equal(p('what did i remove yesterday').inletAction, 'removed');
+  assert.equal(p('files i deleted last week').inletAction, 'removed');
+
+  // Everyday words that are also extensions
+  assert.deepEqual(p('web pages about taxes').kinds, []);
+  assert.deepEqual(p('.pages files about taxes').kinds.map((k) => k.label), ['.pages']);
+  assert.deepEqual(p('numbers files').kinds.map((k) => k.label), ['.numbers']);
+});
+
+test('a watched folder inside a hidden or Library folder still returns results', { skip: process.platform !== 'darwin' }, async () => {
+  // e.g. iCloud Drive, which lives at ~/Library/Mobile Documents/com~apple~CloudDocs
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'inlet-find-hidden-')));
+  const dir = path.join(base, '.cloud', 'Library', 'Watched');
+  fs.mkdirSync(path.join(dir, '.cache'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'headphones-invoice.txt'), 'Tax invoice for headphones');
+  fs.writeFileSync(path.join(dir, '.cache', 'headphones-invoice-copy.txt'), 'hidden copy'); // hidden *inside* the folder: still skipped
+  const settings = { ...defaultSettings(), watchDir: dir };
+  const res = await search(parse('headphones invoice', { categories }), { settings, ledger: null, batches: [] });
+  assert.deepEqual(res.results.map((r) => r.name), ['headphones-invoice.txt']);
+});
+
 test('compiles to a Spotlight query', () => {
   const q = parse('pdfs from github about "tax return" over 2 MB', { categories, now });
   const s = toSpotlight(q, { categories });
