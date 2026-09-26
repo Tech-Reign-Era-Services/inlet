@@ -1,11 +1,13 @@
 # Inlet
 
-**A free, open-source Mac app that keeps your Downloads folder clean.** Inlet sorts files into tidy folders (Images, Documents, Installers and more) either automatically as they finish downloading, or when you click one button.
+**A free, open-source Mac app that keeps your Downloads folder clean and finds any file you describe.**
+
+- **Tidy:** Inlet sorts downloads into folders (Images, Documents, Installers and more), either automatically as they finish or when you click one button.
+- **Find:** type what you remember, like *“pdfs from github last week”* or *“the contract I signed in July”*, and Inlet finds it. It even knows which website a file came from after macOS has forgotten.
 
 ![Inlet overview](docs/screenshots/overview.png)
 
-- **Nothing is ever deleted or overwritten.** Inlet only moves files, and every move can be undone: from the Activity page, from the menu bar, or with ⌘Z.
-- **Your files stay on your Mac.** No account, no cloud, no tracking.
+Nothing is ever deleted or overwritten, everything can be undone with ⌘Z, and your files never leave your Mac: no account, no cloud, no tracking.
 
 ## Download
 
@@ -34,22 +36,51 @@ When Inlet first reads your Downloads folder, macOS asks for permission. Click *
 
 ## What it does
 
-![Organize preview](docs/screenshots/organize.png)
-
-- **Find files by describing them.** Press ⌘F and type what you remember: "pdfs from github last week", "the contract I signed in July", "big videos I haven't opened in a month". Inlet shows what it understood as chips you can remove, says why each file matched, and lets you gather the results into a folder (undoable), preview them, or drag them out.
-- **Manual or Auto.** In Manual mode (the default), you see a preview of every file, where it will go and why, before anything moves. In Auto mode, each new download is sorted once it has *finished* downloading. Half-finished `.crdownload`, `.part` and `.download` files are never touched.
-- **Scheduled tidy.** A daily sweep at a time you choose.
-- **More than Downloads.** Watch Desktop (where screenshots land) or any other folder. Each folder can have its own mode.
-- **Rules.** Match files by name, extension, size, age, the website they came from, their Finder kind, or even the **text inside** PDFs and documents. Rules can rename files as they move them, e.g. `scan0001.pdf` → `Documents/Scans/Scan 2026-09-25.pdf`.
-- **Remembers where files came from.** Inlet notes the website and app of each download as it arrives, and unzipped files keep their archive's source. macOS itself loses that. Hover over a file to see it. It all stays on your Mac.
-- **It learns.** Change where Inlet puts a file (in the app or by dragging it in Finder) and it suggests a rule for next time. Drag a file back into Downloads and Inlet leaves it alone.
-- **Cleanup.** Find files you haven't opened in months, and duplicate files. Archive them, or remove them. Removed files wait 30 days in a hidden holding folder so you can undo, then go to the Trash.
-- **Your rules on every Mac.** Export and import your rules, or keep them in sync through a folder like iCloud Drive.
-- **Folders are left alone.** Project folders and anything that isn't a loose file stay where they are, unless you choose otherwise.
+### Find files by describing them
 
 ![Find](docs/screenshots/find.png)
 
+Press **⌘F** and type what you remember about a file, in your own words:
+
+| You type | Inlet looks for |
+|---|---|
+| pdfs from github last week | PDFs · downloaded from github.com · during last week |
+| big videos I haven't opened in a month | videos · over 50 MB · not opened in 30 days |
+| the contract I signed in July | “contract” or “signed” in the name or text · from July |
+| airdropped photos | images · received with AirDrop |
+| what did Inlet move today | today's moves, from Inlet's own history |
+
+- **It shows what it understood** as chips, like `.pdf` `from github` `last week`. Remove any chip to widen the search.
+- **Every result says why it matched,** and where the file came from.
+- **It searches what's inside files too:** the text of PDFs, Word, Pages, Excel and text files.
+- **Grab what you find:** gather results into a folder (undoable), preview with Space, drag them out, copy their paths, or show them in Finder.
+- **Fast on big folders:** code projects are left out unless you ask, so most searches take about a second or less.
+- **No AI service, nothing sent anywhere.** It uses macOS Spotlight and Inlet's own records.
+
+### Remembers where files came from
+
+macOS forgets which website a file came from when you unzip it, AirDrop it or save it from another app. Inlet notes the website and the app of every download **the moment it arrives**, and files unzipped from an archive keep the archive's source. Hover over a file to see it, search by it (“stuff from figma”), or sort by it with rules. You can see, export or clear this history in **Settings → Download history**.
+
+### Keeps Downloads tidy
+
+![Organize preview](docs/screenshots/organize.png)
+
+- **Manual or Auto.** In Manual mode (the default), you see every file, where it will go and why, before anything moves. In Auto mode, each new download is sorted once it has *finished* downloading. Half-finished `.crdownload`, `.part` and `.download` files are never touched.
+- **Scheduled tidy.** A daily sweep at a time you choose.
+- **More than Downloads.** Watch Desktop (where screenshots land) or any other folder. Each folder can have its own mode.
+- **Rules.** Match files by name, extension, size, age, the website they came from, their Finder kind, or the **text inside** them. Rules can rename files as they move them, e.g. `scan0001.pdf` → `Documents/Scans/Scan 2026-09-25.pdf`.
+- **It learns.** Change where Inlet puts a file (in the app or by dragging it in Finder) and it suggests a rule for next time. Drag a file back into Downloads and Inlet leaves it alone.
+- **Cleanup.** Find files you haven't opened in months, and duplicate files. Archive or remove them. Removed files wait 30 days in a hidden holding folder so you can undo, then go to the Trash.
+- **Your rules on every Mac.** Export and import your rules, or keep them in sync through a folder like iCloud Drive.
+- **Folders are left alone.** Project folders and anything that isn't a loose file stay where they are, unless you choose otherwise.
+
 ![Rules](docs/screenshots/rules.png)
+
+### Safe by design
+
+- **Nothing is deleted or overwritten.** Inlet only moves files. A name clash becomes `report (1).pdf`.
+- **Everything is undoable,** from the Activity page, the menu bar, or ⌘Z.
+- **Everything stays on your Mac.** Inlet never connects to the internet.
 
 ![Activity and undo](docs/screenshots/activity.png)
 
