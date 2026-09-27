@@ -80,7 +80,7 @@ macOS forgets which website a file came from when you unzip it, AirDrop it or sa
 
 ### Looking for the Shelf?
 
-The Shelf, a drawer in the notch for files, text and links, used to be part of Inlet. Since 1.10 it's its own small app, **Ledge**, which looks and works the same and is under 1 MB. Anything that was on Inlet's Shelf comes across the first time you open Ledge.
+The Shelf, a drawer in the notch for files, text and links, used to be part of Inlet. Since 1.10 it's its own small app, **[Ledge](https://github.com/Tech-Reign-Era-Services/ledge)**, which looks and works the same and is under 1 MB. Anything that was on Inlet's Shelf comes across the first time you open Ledge.
 
 ### Safe by design
 
