@@ -93,7 +93,6 @@ function defaultSettings() {
     updateCheck: true, // ask GitHub for new versions (the only thing Inlet ever asks the internet)
     lastUpdateCheck: 0,
     skippedVersion: '', // "Skip this version"
-    shelfEnabled: true, // the Shelf at the top of the screen (the notch on Macs that have one)
     categories: JSON.parse(JSON.stringify([...DEFAULT_CATEGORIES, OTHER_CATEGORY])),
     rules: JSON.parse(JSON.stringify(DEFAULT_RULES)),
     onboarded: false,

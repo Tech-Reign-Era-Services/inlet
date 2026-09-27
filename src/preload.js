@@ -37,7 +37,6 @@ contextBridge.exposeInMainWorld('tidy', {
   gather: invoke('find:gather'),
   preview: invoke('find:preview'),
   startDrag: (p) => ipcRenderer.send('find:drag', p),
-  addToShelf: invoke('find:toShelf'),
   checkUpdate: invoke('update:check'),
   installUpdate: invoke('update:install'),
   laterUpdate: invoke('update:later'),
