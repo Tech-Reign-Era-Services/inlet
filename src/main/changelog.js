@@ -3,6 +3,15 @@
 // Shown in "What's new" after an update (newest first). Keep entries short and user-facing.
 module.exports = [
   {
+    version: '1.10.0',
+    title: 'The Shelf is now its own app',
+    items: [
+      'The Shelf has moved out of Inlet into Ledge, a small separate app (under 1 MB) that looks and works just the same: hover over the notch, drag things to it, or press ⌃⌥S.',
+      'Anything on your Shelf comes across the first time you open Ledge. Until then, it’s kept safe.',
+      'Inlet goes back to what it does best: keeping Downloads tidy and finding your files.',
+    ],
+  },
+  {
     version: '1.9.1',
     title: 'Shelf fixes',
     items: [

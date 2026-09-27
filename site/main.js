@@ -123,7 +123,7 @@
     }, { threshold: 0.4 }).observe(demo);
   }
 
-  // Looping videos (hero, Shelf): respect reduced motion, play only on screen, and give people a pause button.
+  // Looping videos: respect reduced motion, play only on screen, and give people a pause button.
   function loopVideo(video) {
     const toggle = video.parentElement.querySelector('[data-video-toggle]');
     if (!toggle) return;
@@ -146,7 +146,7 @@
   }
 
   loadRelease();
-  document.querySelectorAll('[data-hero-video], [data-loop-video]').forEach(loopVideo);
+  document.querySelectorAll('[data-hero-video]').forEach(loopVideo);
   flagNonMac();
   navShadow();
   findDemo();
